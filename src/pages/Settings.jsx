@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService, fetchTeamProfile, saveTeamProfile } from '../lib/api'
 
@@ -14,6 +15,9 @@ const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '', 
 
 export default function Settings() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'billing'
+
   const [hospitals, setHospitals] = useState([])
   const [rates, setRates] = useState({})
   const [showModal, setShowModal] = useState(false)
@@ -186,14 +190,35 @@ export default function Settings() {
 
   return (
     <div className="p-4 md:p-8">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">Settings</h1>
-        <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition">
-          + Add Hospital
-        </button>
+        {activeTab === 'billing' && (
+          <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition">
+            + Add Hospital
+          </button>
+        )}
       </div>
 
-      <div className="bg-white p-4 md:p-6 rounded-xl shadow">
+      {/* Tab navigation */}
+      <div className="flex gap-2 mb-6">
+        {[['billing', 'Billing Settings'], ['admin', 'Admin Settings']].map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setSearchParams({ tab })}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+              activeTab === tab
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'billing' && (
+        <>
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow">
         <h2 className="text-xl font-bold mb-4">Daily Visit Rates (KES)</h2>
         {hospitals.length === 0 ? (
           <p className="text-gray-500">No hospitals yet. Click "Add Hospital" to get started.</p>
@@ -440,6 +465,15 @@ export default function Settings() {
           {practiceSaved && <span className="text-green-600 text-sm font-medium">Saved!</span>}
         </div>
       </div>
+        </>
+      )}
+
+      {activeTab === 'admin' && (
+        <div className="bg-white p-6 rounded-xl shadow">
+          <h2 className="text-xl font-bold mb-2">Team Management</h2>
+          <p className="text-gray-500 text-sm">Team management features — coming soon.</p>
+        </div>
+      )}
 
       {showModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm">

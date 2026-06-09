@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, UserPlus, BarChart2, Settings, LogOut, Menu, X
+  LayoutDashboard, Users, UserPlus, BarChart2, Settings, LogOut, Menu, X, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { signOut } from '../lib/auth'
@@ -17,6 +17,7 @@ const navItems = [
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [userExpanded, setUserExpanded] = useState(false)
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -95,9 +96,39 @@ export default function Sidebar() {
         {/* User footer */}
         <div className={`p-3 border-t border-white/20 space-y-1`}>
           {user && !collapsed && (
-            <div className="px-3 py-2 mb-1">
-              <p className="text-sm font-medium truncate">{user.full_name}</p>
-              <p className="text-xs text-ios-gray-1 capitalize">{user.role?.replace('_', ' ')}</p>
+            <div className="mb-1">
+              {/* Collapsible user header */}
+              <button
+                onClick={() => setUserExpanded(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+              >
+                <div className="min-w-0 text-left">
+                  <p className="text-sm font-medium truncate">{user.full_name}</p>
+                  <p className="text-xs text-ios-gray-1 capitalize">{user.role?.replace('_', ' ')}</p>
+                </div>
+                <ChevronDown
+                  size={14}
+                  className={`text-ios-gray-1 flex-shrink-0 ml-2 transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {/* Sub-links */}
+              {userExpanded && (
+                <div className="mt-1 space-y-0.5 pl-3">
+                  <button
+                    onClick={() => { navigate('/settings?tab=billing'); setMobileOpen(false) }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                  >
+                    Billing Settings
+                  </button>
+                  <button
+                    onClick={() => { navigate('/settings?tab=admin'); setMobileOpen(false) }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                  >
+                    Admin Settings
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
