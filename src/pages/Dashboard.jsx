@@ -58,13 +58,23 @@ export default function Dashboard() {
     new Map(
       admissions
         .filter(a => a.hospitals)
-        .map(a => [a.hospitals.id, { id: a.hospitals.id, name: a.hospitals.name }])
+        .map(a => [a.hospitals.id, { id: a.hospitals.id, name: a.hospitals.name, color: a.hospitals.color }])
     ).values()
   )
 
   const filteredAdmissions = selectedHospitalId
     ? admissions.filter(a => a.hospitals?.id === selectedHospitalId)
     : admissions
+
+  const todayStr = new Date().toDateString()
+  const todayCountByHospital = {}
+  for (const a of admissions) {
+    if (new Date(a.created_at).toDateString() === todayStr) {
+      const hid = a.hospitals?.id
+      if (hid) todayCountByHospital[hid] = (todayCountByHospital[hid] || 0) + 1
+    }
+  }
+  const todayTotal = Object.values(todayCountByHospital).reduce((s, n) => s + n, 0)
 
   return (
     <div className="flex flex-col min-h-full">
@@ -105,29 +115,57 @@ export default function Dashboard() {
         {/* Hospital Filter Tabs */}
         {hospitals.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-1">
-            <button
-              onClick={() => setSelectedHospitalId(null)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition whitespace-nowrap ${
-                selectedHospitalId === null
-                  ? 'bg-ios-blue text-white'
-                  : 'bg-black/[0.06] dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10'
-              }`}
-            >
-              All Hospitals
-            </button>
-            {hospitals.map(h => (
+            {/* All Hospitals tab */}
+            <div className="relative flex-shrink-0">
               <button
-                key={h.id}
-                onClick={() => setSelectedHospitalId(h.id)}
+                onClick={() => setSelectedHospitalId(null)}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition whitespace-nowrap ${
-                  selectedHospitalId === h.id
+                  selectedHospitalId === null
                     ? 'bg-ios-blue text-white'
                     : 'bg-black/[0.06] dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10'
                 }`}
               >
-                {h.name}
+                All Hospitals
               </button>
-            ))}
+              {todayTotal > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 pointer-events-none">
+                  {todayTotal}
+                </span>
+              )}
+            </div>
+
+            {/* Per-hospital tabs */}
+            {hospitals.map(h => {
+              const isActive = selectedHospitalId === h.id
+              const color = h.color || '#3B82F6'
+              const count = todayCountByHospital[h.id] || 0
+              return (
+                <div key={h.id} className="relative flex-shrink-0">
+                  <button
+                    onClick={() => setSelectedHospitalId(h.id)}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition whitespace-nowrap ${
+                      isActive
+                        ? 'text-white'
+                        : 'bg-black/[0.06] dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10'
+                    }`}
+                    style={isActive ? { backgroundColor: color } : {}}
+                  >
+                    {!isActive && (
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                    )}
+                    {h.name}
+                  </button>
+                  {count > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 pointer-events-none">
+                      {count}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 
