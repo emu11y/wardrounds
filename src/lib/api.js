@@ -287,6 +287,7 @@ export async function fetchHospitals(teamId) {
     .from('hospitals')
     .select('*, hospital_services(*)')
     .eq('team_id', teamId)
+    .or('status.eq.active,status.is.null')
     .order('name')
   if (error) throw error
   return data
@@ -450,11 +451,19 @@ export async function fetchRevenueByDateRange(teamId, from, to) {
 export async function getHospitalsByTeam(teamId) {
   const { data, error } = await supabase
     .from('hospitals')
-    .select('*')
+    .select('*, hospital_services(*)')
     .eq('team_id', teamId)
     .order('name')
   if (error) console.error('getHospitalsByTeam error:', error)
   return data || []
+}
+
+export async function setHospitalStatus(id, status) {
+  const { error } = await supabase
+    .from('hospitals')
+    .update({ status })
+    .eq('id', id)
+  if (error) throw error
 }
 
 export async function seedTestHospitals(teamId) {

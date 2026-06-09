@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { fetchHospitals, createHospital, updateHospital, deleteHospital, createHospitalService, updateHospitalService } from '../lib/api'
+import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService } from '../lib/api'
 
 const RATE_SERVICES = ['General Ward', 'HDU', 'ICU']
 const RATE_LABELS = { 'General Ward': 'Ward', HDU: 'HDU', ICU: 'ICU' }
@@ -19,7 +19,7 @@ export default function Settings() {
 
   const loadHospitals = async () => {
     if (!user?.team_id) return
-    const data = await fetchHospitals(user.team_id)
+    const data = await getHospitalsByTeam(user.team_id)
     setHospitals(data)
     const init = {}
     for (const h of data) {
@@ -92,13 +92,14 @@ export default function Settings() {
     setSaving(false)
   }
 
-  const handleDeleteHospital = async (hospital) => {
-    if (!window.confirm(`Delete "${hospital.name}"? This cannot be undone.`)) return
+  const handleToggleStatus = async (hospital) => {
+    const isActive = hospital.status !== 'inactive'
+    if (isActive && !window.confirm(`Deactivate "${hospital.name}"? It will be hidden from new admissions.`)) return
     try {
-      await deleteHospital(hospital.id)
+      await setHospitalStatus(hospital.id, isActive ? 'inactive' : 'active')
       loadHospitals()
     } catch (err) {
-      alert('Failed to delete hospital: ' + err.message)
+      alert('Failed to update hospital status: ' + err.message)
     }
   }
 
@@ -154,42 +155,54 @@ export default function Settings() {
               </tr>
             </thead>
             <tbody>
-              {hospitals.map((h) => (
-                <tr key={h.id} className="border-b">
-                  <td className="px-4 py-3 font-semibold">
-                    {h.name}
-                    {h.location ? <span className="block text-sm text-gray-500 font-normal">{h.location}</span> : null}
-                  </td>
-                  {RATE_SERVICES.map((svc) => (
-                    <td key={svc} className="px-4 py-3 text-center">
-                      <input
-                        type="number"
-                        className="w-24 px-2 py-1 border rounded text-center"
-                        placeholder="0"
-                        value={rates[h.id]?.[svc] ?? ''}
-                        onChange={(e) => setRates(prev => ({
-                          ...prev,
-                          [h.id]: { ...prev[h.id], [svc]: e.target.value },
-                        }))}
-                      />
+              {hospitals.map((h) => {
+                const isInactive = h.status === 'inactive'
+                return (
+                  <tr key={h.id} className={`border-b ${isInactive ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3 font-semibold">
+                      <div className="flex items-center gap-2">
+                        {h.name}
+                        {isInactive && (
+                          <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>
+                        )}
+                      </div>
+                      {h.location ? <span className="block text-sm text-gray-500 font-normal">{h.location}</span> : null}
                     </td>
-                  ))}
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => openEditModal(h)}
-                      className="px-3 py-1 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition mr-2"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteHospital(h)}
-                      className="px-3 py-1 text-sm border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    {RATE_SERVICES.map((svc) => (
+                      <td key={svc} className="px-4 py-3 text-center">
+                        <input
+                          type="number"
+                          className="w-24 px-2 py-1 border rounded text-center"
+                          placeholder="0"
+                          value={rates[h.id]?.[svc] ?? ''}
+                          onChange={(e) => setRates(prev => ({
+                            ...prev,
+                            [h.id]: { ...prev[h.id], [svc]: e.target.value },
+                          }))}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => openEditModal(h)}
+                        className="px-3 py-1 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition mr-2"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleToggleStatus(h)}
+                        className={`px-3 py-1 text-sm border rounded-lg transition ${
+                          isInactive
+                            ? 'border-green-300 text-green-600 hover:bg-green-50'
+                            : 'border-orange-200 text-orange-500 hover:bg-orange-50'
+                        }`}
+                      >
+                        {isInactive ? 'Activate' : 'Deactivate'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
