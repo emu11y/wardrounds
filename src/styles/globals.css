@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ios-blue: #007AFF;
+    --ios-green: #34C759;
+    --ios-red: #FF3B30;
+    --ios-orange: #FF9500;
+    --ios-bg: #F2F2F7;
+    --ios-surface: rgba(255, 255, 255, 0.72);
+    --ios-border: rgba(60, 60, 67, 0.12);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .dark {
+    --ios-bg: #1C1C1E;
+    --ios-surface: rgba(44, 44, 46, 0.72);
+    --ios-border: rgba(255, 255, 255, 0.12);
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    height: 100%;
+    overscroll-behavior: none;
+  }
+
+  body {
+    background-color: var(--ios-bg);
+    color: #1C1C1E;
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  .dark body {
+    color: #F2F2F7;
+  }
+
+  #root {
+    height: 100%;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply backdrop-blur-xl bg-white/70 border border-white/30 shadow-glass;
+  }
+
+  .dark .glass {
+    @apply bg-white/10 border-white/10;
+  }
+
+  .glass-card {
+    @apply glass rounded-3xl p-5;
+  }
+
+  .glass-button {
+    @apply backdrop-blur-sm bg-white/50 border border-white/30 rounded-2xl px-4 py-2
+           font-medium transition-all active:scale-95 cursor-pointer;
+  }
+
+  .ios-blue-btn {
+    @apply bg-ios-blue text-white rounded-2xl px-5 py-3 font-semibold
+           shadow-ios-card transition-all active:scale-95 cursor-pointer
+           hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .ios-input {
+    @apply w-full bg-white/60 dark:bg-white/10 border border-white/30
+           rounded-2xl px-4 py-3 text-sm outline-none
+           focus:ring-2 focus:ring-ios-blue/40 focus:border-ios-blue/50
+           placeholder:text-ios-gray-1 transition-all;
+  }
+
+  .page-container {
+    @apply min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50
+           dark:from-gray-900 dark:via-gray-800 dark:to-gray-900;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-admitted {
+    @apply status-badge bg-ios-green/15 text-ios-green;
+  }
+
+  .status-discharged {
+    @apply status-badge bg-ios-gray-4 text-ios-gray-1;
+  }
+
+  .status-transferred {
+    @apply status-badge bg-ios-orange/15 text-ios-orange;
+  }
+
+  .timeline-dot {
+    @apply w-2.5 h-2.5 rounded-full flex-shrink-0;
+  }
+}
+
+@layer utilities {
+  .safe-top {
+    padding-top: var(--safe-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
