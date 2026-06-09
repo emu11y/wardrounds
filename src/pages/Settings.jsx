@@ -4,7 +4,13 @@ import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, 
 
 const RATE_SERVICES = ['General Ward', 'HDU', 'ICU']
 const RATE_LABELS = { 'General Ward': 'Ward', HDU: 'HDU', ICU: 'ICU' }
-const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '' }
+const DEFAULT_COLOR = '#3B82F6'
+const PALETTE = [
+  '#3B82F6', '#10B981', '#8B5CF6', '#F97316',
+  '#EC4899', '#14B8A6', '#6366F1', '#EF4444',
+  '#F59E0B', '#06B6D4', '#F43F5E', '#64748B',
+]
+const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '', color: DEFAULT_COLOR }
 
 export default function Settings() {
   const { user } = useAuth()
@@ -51,6 +57,7 @@ export default function Settings() {
       address: hospital.address || '',
       phone: hospital.phone || '',
       email: hospital.email || '',
+      color: hospital.color || DEFAULT_COLOR,
     })
     setShowModal(true)
   }
@@ -72,6 +79,7 @@ export default function Settings() {
           address: form.address.trim(),
           phone: form.phone.trim(),
           email: form.email.trim(),
+          color: form.color,
         })
       } else {
         if (!user?.team_id) { alert('No team found for current user'); setSaving(false); return }
@@ -81,6 +89,7 @@ export default function Settings() {
           address: form.address.trim(),
           phone: form.phone.trim(),
           email: form.email.trim(),
+          color: form.color,
           team_id: user.team_id,
         })
       }
@@ -161,12 +170,16 @@ export default function Settings() {
                   <tr key={h.id} className={`border-b ${isInactive ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3 font-semibold">
                       <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: h.color || DEFAULT_COLOR }}
+                        />
                         {h.name}
                         {isInactive && (
                           <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>
                         )}
                       </div>
-                      {h.location ? <span className="block text-sm text-gray-500 font-normal">{h.location}</span> : null}
+                      {h.location ? <span className="block text-sm text-gray-500 font-normal pl-5">{h.location}</span> : null}
                     </td>
                     {RATE_SERVICES.map((svc) => (
                       <td key={svc} className="px-4 py-3 text-center">
@@ -245,6 +258,21 @@ export default function Settings() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="e.g. billing@hospital.com" className="w-full rounded-lg border border-white/60 bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Colour</label>
+                <div className="flex flex-wrap gap-2">
+                  {PALETTE.map(hex => (
+                    <button
+                      key={hex}
+                      type="button"
+                      onClick={() => setForm({ ...form, color: hex })}
+                      className={`w-7 h-7 rounded-lg transition-transform hover:scale-110 ${form.color === hex ? 'ring-2 ring-offset-2 ring-slate-600 scale-110' : ''}`}
+                      style={{ backgroundColor: hex }}
+                      title={hex}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
             <div className="px-6 py-4 flex gap-3 justify-end border-t border-white/40">

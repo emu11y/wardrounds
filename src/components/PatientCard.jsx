@@ -155,8 +155,13 @@ export default function PatientCard({ admission, isExpanded, onToggleExpand, onR
     finally { setDeleting(false) }
   }
 
+  const accentColor = hospital?.color || '#3B82F6'
+
   return (
-    <div className="glass-card hover:shadow-glass-md transition-all duration-200">
+    <div
+      className="glass-card hover:shadow-glass-md transition-all duration-200 border-l-4"
+      style={{ borderLeftColor: accentColor }}
+    >
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 mb-3">

@@ -57,7 +57,7 @@ export async function fetchActiveAdmissions(teamId) {
     .select(`
       *,
       patients(id, first_name, last_name, date_of_birth, insurance_name),
-      hospitals(id, name, location, hospital_services(id, service_name, price_per_day)),
+      hospitals(id, name, location, color, hospital_services(id, service_name, price_per_day)),
       timeline_events(id, event_type, ward, timestamp, notes),
       patient_notes(id, note_text, signature, created_at, users(full_name)),
       services_rendered(id, rendered_date, quantity, price_applied, hospital_services(service_name))
@@ -75,7 +75,7 @@ export async function fetchAllAdmissions(teamId) {
     .select(`
       *,
       patients(id, first_name, last_name, date_of_birth, insurance_name),
-      hospitals(id, name, location),
+      hospitals(id, name, location, color),
       timeline_events(id, event_type, ward, timestamp, notes)
     `)
     .eq('team_id', teamId)
@@ -89,7 +89,7 @@ export async function fetchAdmissionsForPatient(patientId) {
     .from('admissions')
     .select(`
       *,
-      hospitals(id, name, location),
+      hospitals(id, name, location, color),
       timeline_events(id, event_type, ward, timestamp, notes),
       patient_notes(id, note_text, signature, created_at, users(full_name)),
       services_rendered(id, rendered_date, quantity, price_applied, hospital_services(service_name))
