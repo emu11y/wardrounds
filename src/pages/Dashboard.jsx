@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [transferAdmission, setTransferAdmission] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [selectedHospitalId, setSelectedHospitalId] = useState(null)
+  const [visitedHospitals, setVisitedHospitals] = useState(new Set())
 
   const load = useCallback(async () => {
     if (!user?.team_id) return
@@ -51,6 +52,7 @@ export default function Dashboard() {
 
   function handleRefresh() {
     setRefreshing(true)
+    setVisitedHospitals(new Set())
     load()
   }
 
@@ -114,12 +116,15 @@ export default function Dashboard() {
 
         {/* Hospital Filter Tabs */}
         {hospitals.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex gap-2 overflow-x-auto pt-2 pb-1">
             {/* All Hospitals tab */}
             <div className="relative flex-shrink-0">
               <button
-                onClick={() => setSelectedHospitalId(null)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition whitespace-nowrap ${
+                onClick={() => {
+                  setSelectedHospitalId(null)
+                  setVisitedHospitals(new Set(hospitals.map(h => h.id)))
+                }}
+                className={`px-4 py-1.5 rounded-xl text-sm font-medium transition whitespace-nowrap ${
                   selectedHospitalId === null
                     ? 'bg-ios-blue text-white'
                     : 'bg-black/[0.06] dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10'
@@ -127,7 +132,7 @@ export default function Dashboard() {
               >
                 All Hospitals
               </button>
-              {todayTotal > 0 && (
+              {todayTotal > 0 && hospitals.some(h => (todayCountByHospital[h.id] || 0) > 0 && !visitedHospitals.has(h.id)) && (
                 <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 pointer-events-none">
                   {todayTotal}
                 </span>
@@ -139,11 +144,15 @@ export default function Dashboard() {
               const isActive = selectedHospitalId === h.id
               const color = h.color || '#3B82F6'
               const count = todayCountByHospital[h.id] || 0
+              const showBadge = count > 0 && !visitedHospitals.has(h.id)
               return (
                 <div key={h.id} className="relative flex-shrink-0">
                   <button
-                    onClick={() => setSelectedHospitalId(h.id)}
-                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition whitespace-nowrap ${
+                    onClick={() => {
+                      setSelectedHospitalId(h.id)
+                      setVisitedHospitals(prev => new Set([...prev, h.id]))
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-sm font-medium transition whitespace-nowrap ${
                       isActive
                         ? 'text-white'
                         : 'bg-black/[0.06] dark:bg-white/10 text-gray-700 dark:text-gray-200 hover:bg-black/10'
@@ -158,7 +167,7 @@ export default function Dashboard() {
                     )}
                     {h.name}
                   </button>
-                  {count > 0 && (
+                  {showBadge && (
                     <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 pointer-events-none">
                       {count}
                     </span>
@@ -207,6 +216,7 @@ export default function Dashboard() {
                 key={admission.id}
                 admission={admission}
                 isExpanded={expandedId === admission.id}
+                isNew={new Date(admission.created_at).toDateString() === todayStr}
                 onToggleExpand={() => setExpandedId(prev => prev === admission.id ? null : admission.id)}
                 onRefresh={load}
                 onAddNotes={setNotesAdmission}

@@ -98,7 +98,7 @@ function buildBillingLines(admission) {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export default function PatientCard({ admission, isExpanded, onToggleExpand, onRefresh, onAddNotes, onAddServices, onTransfer, onInvoice }) {
+export default function PatientCard({ admission, isExpanded, isNew, onToggleExpand, onRefresh, onAddNotes, onAddServices, onTransfer, onInvoice }) {
   const { user } = useAuth()
   const [billingOpen, setBillingOpen] = useState(true)
   const [discharging, setDischarging] = useState(false)
@@ -189,6 +189,14 @@ export default function PatientCard({ admission, isExpanded, onToggleExpand, onR
         {/* Right: billing summary + chevron */}
         <div className="flex items-start gap-2 flex-shrink-0">
           <div className="text-right">
+            {isNew && (
+              <span
+                className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold text-white mb-1"
+                style={{ backgroundColor: accentColor }}
+              >
+                New
+              </span>
+            )}
             <p className="text-[17px] font-bold tabular-nums text-gray-900 dark:text-gray-50 leading-tight">
               KES {Math.round(grandTotal).toLocaleString()}
             </p>
