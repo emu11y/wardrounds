@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { fetchHospitals, createHospital, createHospitalService, updateHospitalService } from '../lib/api'
+import { fetchHospitals, createHospital, updateHospital, deleteHospital, createHospitalService, updateHospitalService } from '../lib/api'
 
 const RATE_SERVICES = ['General Ward', 'HDU', 'ICU']
 const RATE_LABELS = { 'General Ward': 'Ward', HDU: 'HDU', ICU: 'ICU' }
+const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '' }
 
 export default function Settings() {
   const { user } = useAuth()
   const [hospitals, setHospitals] = useState([])
   const [rates, setRates] = useState({})
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ name: '', location: '', address: '', phone: '', email: '' })
+  const [editingHospital, setEditingHospital] = useState(null)
+  const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [savingRates, setSavingRates] = useState(false)
   const [ratesSaved, setRatesSaved] = useState(false)
@@ -35,28 +37,69 @@ export default function Settings() {
     loadHospitals()
   }, [user?.team_id])
 
-  const resetForm = () => setForm({ name: '', location: '', address: '', phone: '', email: '' })
+  const openAddModal = () => {
+    setEditingHospital(null)
+    setForm(EMPTY_FORM)
+    setShowModal(true)
+  }
 
-  const handleAddHospital = async () => {
+  const openEditModal = (hospital) => {
+    setEditingHospital(hospital)
+    setForm({
+      name: hospital.name || '',
+      location: hospital.location || '',
+      address: hospital.address || '',
+      phone: hospital.phone || '',
+      email: hospital.email || '',
+    })
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingHospital(null)
+    setForm(EMPTY_FORM)
+  }
+
+  const handleSaveHospital = async () => {
     if (!form.name.trim()) { alert('Hospital name is required'); return }
-    if (!user?.team_id) { alert('No team found for current user'); return }
     setSaving(true)
     try {
-      await createHospital({
-        name: form.name.trim(),
-        location: form.location.trim(),
-        address: form.address.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        team_id: user.team_id,
-      })
-      resetForm()
-      setShowModal(false)
+      if (editingHospital) {
+        await updateHospital(editingHospital.id, {
+          name: form.name.trim(),
+          location: form.location.trim(),
+          address: form.address.trim(),
+          phone: form.phone.trim(),
+          email: form.email.trim(),
+        })
+      } else {
+        if (!user?.team_id) { alert('No team found for current user'); setSaving(false); return }
+        await createHospital({
+          name: form.name.trim(),
+          location: form.location.trim(),
+          address: form.address.trim(),
+          phone: form.phone.trim(),
+          email: form.email.trim(),
+          team_id: user.team_id,
+        })
+      }
+      closeModal()
       loadHospitals()
     } catch (err) {
-      alert('Failed to add hospital: ' + err.message)
+      alert('Failed to save hospital: ' + err.message)
     }
     setSaving(false)
+  }
+
+  const handleDeleteHospital = async (hospital) => {
+    if (!window.confirm(`Delete "${hospital.name}"? This cannot be undone.`)) return
+    try {
+      await deleteHospital(hospital.id)
+      loadHospitals()
+    } catch (err) {
+      alert('Failed to delete hospital: ' + err.message)
+    }
   }
 
   const handleSaveRates = async () => {
@@ -86,13 +129,11 @@ export default function Settings() {
     setSavingRates(false)
   }
 
-  const closeModal = () => { setShowModal(false); resetForm() }
-
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Settings</h1>
-        <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition">
+        <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition">
           + Add Hospital
         </button>
       </div>
@@ -109,6 +150,7 @@ export default function Settings() {
                 {RATE_SERVICES.map(svc => (
                   <th key={svc} className="px-4 py-2">{RATE_LABELS[svc]}</th>
                 ))}
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -132,6 +174,20 @@ export default function Settings() {
                       />
                     </td>
                   ))}
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => openEditModal(h)}
+                      className="px-3 py-1 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition mr-2"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteHospital(h)}
+                      className="px-3 py-1 text-sm border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -153,7 +209,7 @@ export default function Settings() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-white/60 bg-white/70 backdrop-blur-2xl shadow-2xl">
             <div className="px-6 py-5 border-b border-white/40">
-              <h2 className="text-xl font-bold text-slate-800">Add Hospital</h2>
+              <h2 className="text-xl font-bold text-slate-800">{editingHospital ? 'Edit Hospital' : 'Add Hospital'}</h2>
               <p className="text-sm text-slate-500 mt-0.5">Details here will appear on invoices</p>
             </div>
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
@@ -180,8 +236,8 @@ export default function Settings() {
             </div>
             <div className="px-6 py-4 flex gap-3 justify-end border-t border-white/40">
               <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-slate-300 bg-white/50 text-slate-700 hover:bg-white/80 transition">Cancel</button>
-              <button onClick={handleAddHospital} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold shadow-sm hover:bg-blue-700 disabled:opacity-50 transition">
-                {saving ? 'Saving...' : 'Save Hospital'}
+              <button onClick={handleSaveHospital} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold shadow-sm hover:bg-blue-700 disabled:opacity-50 transition">
+                {saving ? 'Saving...' : (editingHospital ? 'Save Changes' : 'Save Hospital')}
               </button>
             </div>
           </div>

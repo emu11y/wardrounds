@@ -302,6 +302,22 @@ export async function createHospital(hospital) {
   return data
 }
 
+export async function updateHospital(id, updates) {
+  const { data, error } = await supabase
+    .from('hospitals')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteHospital(id) {
+  const { error } = await supabase.from('hospitals').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function createHospitalService(service) {
   const { data, error } = await supabase
     .from('hospital_services')
