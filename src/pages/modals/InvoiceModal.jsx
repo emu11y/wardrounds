@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Printer } from 'lucide-react'
-import { fetchBillingRecords } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
+import { fetchBillingRecords, fetchTeamProfile } from '../../lib/api'
 
 function fmt(d) {
   if (!d) return '—'
@@ -8,22 +9,27 @@ function fmt(d) {
 }
 
 export default function InvoiceModal({ admission, onClose }) {
+  const { user } = useAuth()
   const [billingRecords, setBillingRecords] = useState([])
+  const [practice, setPractice] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchBillingRecords(admission.id)
-      .then(d => setBillingRecords(d || []))
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [admission.id])
+    Promise.all([
+      fetchBillingRecords(admission.id),
+      user?.team_id ? fetchTeamProfile(user.team_id).catch(() => null) : Promise.resolve(null),
+    ]).then(([billing, prof]) => {
+      setBillingRecords(billing || [])
+      setPractice(prof)
+    }).catch(console.error).finally(() => setLoading(false))
+  }, [admission.id, user?.team_id])
 
-  const hospital = admission.hospitals
-  const patient  = admission.patients
-  const accentColor   = hospital?.color || '#3B82F6'
+  const hospital    = admission.hospitals
+  const patient     = admission.patients
+  const accentColor = hospital?.color || '#3B82F6'
   const invoiceNumber = `INV-${admission.id.slice(0, 8).toUpperCase()}`
 
-  // Group billing records by service name, matched via hospital_services on the admission
+  // Group billing records by service name
   const hospitalServices = hospital?.hospital_services || []
   const groups = {}
   for (const record of billingRecords) {
@@ -35,6 +41,13 @@ export default function InvoiceModal({ admission, onClose }) {
   }
   const lineItems  = Object.values(groups)
   const grandTotal = lineItems.reduce((s, l) => s + l.total, 0)
+
+  const hasPractice = practice && (
+    practice.practice_name || practice.doctor_name ||
+    practice.address || practice.phone || practice.email
+  )
+  const doctorName  = practice?.doctor_name  || 'Dr. Ebrahim Yusuf'
+  const doctorTitle = practice?.doctor_title || 'Attending Physician'
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 overflow-y-auto">
@@ -50,7 +63,7 @@ export default function InvoiceModal({ admission, onClose }) {
         </button>
         <button
           onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center bg-white rounded-xl shadow-lg text-gray-600 hover:bg-gray-50 transition font-bold text-lg"
+          className="w-9 h-9 flex items-center justify-center bg-white rounded-xl shadow-lg text-gray-600 hover:bg-gray-50 transition"
         >
           <X size={16} />
         </button>
@@ -63,25 +76,49 @@ export default function InvoiceModal({ admission, onClose }) {
           <div className="p-16 text-center text-gray-400 text-sm">Loading invoice…</div>
         ) : (
           <>
-            {/* ── Header bar ────────────────────────────────────────────────── */}
-            <div className="px-8 py-6" style={{ backgroundColor: accentColor }}>
-              <p className="text-white/70 text-xs uppercase tracking-widest mb-1">Invoice</p>
-              <h1 className="text-2xl font-bold text-white leading-tight">
-                {hospital?.name || 'Hospital'}
-              </h1>
-              {hospital?.location && (
-                <p className="text-white/60 text-sm mt-0.5">{hospital.location}</p>
+            {/* ── Header bar ───────────────────────────────────────────────── */}
+            <div className="px-8 py-6 flex items-start gap-4" style={{ backgroundColor: accentColor }}>
+              {practice?.logo_url && (
+                <img
+                  src={practice.logo_url}
+                  alt="Practice logo"
+                  className="h-12 w-auto object-contain rounded flex-shrink-0"
+                  onError={e => { e.currentTarget.style.display = 'none' }}
+                />
               )}
+              <div>
+                <p className="text-white/70 text-xs uppercase tracking-widest mb-1">Invoice</p>
+                <h1 className="text-2xl font-bold text-white leading-tight">
+                  {hospital?.name || 'Hospital'}
+                </h1>
+                {hospital?.location && (
+                  <p className="text-white/60 text-sm mt-0.5">{hospital.location}</p>
+                )}
+              </div>
             </div>
 
-            {/* ── Contact + Invoice number ───────────────────────────────── */}
+            {/* ── Issued by + Invoice number ────────────────────────────────── */}
             <div className="px-8 py-5 flex justify-between gap-6 border-b border-gray-100">
-              <div className="text-sm text-gray-500 space-y-0.5">
-                {hospital?.address && <p>{hospital.address}</p>}
-                {hospital?.phone   && <p>{hospital.phone}</p>}
-                {hospital?.email   && <p>{hospital.email}</p>}
-                {!hospital?.address && !hospital?.phone && !hospital?.email && (
-                  <p className="italic text-gray-300">No contact details saved</p>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                  Issued by
+                </p>
+                {hasPractice ? (
+                  <div className="text-sm text-gray-600 space-y-0.5">
+                    {practice.practice_name && (
+                      <p className="font-semibold text-gray-800">{practice.practice_name}</p>
+                    )}
+                    {practice.doctor_name && (
+                      <p>{practice.doctor_name}{practice.doctor_title ? `, ${practice.doctor_title}` : ''}</p>
+                    )}
+                    {practice.address && <p>{practice.address}</p>}
+                    {practice.phone   && <p>{practice.phone}</p>}
+                    {practice.email   && <p>{practice.email}</p>}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-300 italic">
+                    Complete your practice details in Settings
+                  </p>
                 )}
               </div>
               <div className="text-right text-sm flex-shrink-0">
@@ -90,7 +127,7 @@ export default function InvoiceModal({ admission, onClose }) {
               </div>
             </div>
 
-            {/* ── Bill To + Admission details ────────────────────────────── */}
+            {/* ── Bill To + Admission details ───────────────────────────────── */}
             <div className="px-8 py-5 grid grid-cols-2 gap-6 border-b border-gray-100">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
@@ -115,12 +152,12 @@ export default function InvoiceModal({ admission, onClose }) {
                   Ward: <span className="font-medium">{admission.ward || '—'}</span>
                 </p>
                 <p className="text-sm text-gray-700">
-                  Attending: <span className="font-medium">Dr. Ebrahim Yusuf</span>
+                  Attending: <span className="font-medium">{doctorName}</span>
                 </p>
               </div>
             </div>
 
-            {/* ── Line items ────────────────────────────────────────────────── */}
+            {/* ── Line items ───────────────────────────────────────────────── */}
             <div className="px-8 py-5">
               <table className="w-full text-sm">
                 <thead>
@@ -143,9 +180,7 @@ export default function InvoiceModal({ admission, onClose }) {
                       <td className="py-3 font-medium text-gray-800">{item.name}</td>
                       <td className="py-3 text-center text-gray-600 tabular-nums">{item.days}</td>
                       <td className="py-3 text-right text-gray-600 tabular-nums">
-                        {item.days > 0
-                          ? Math.round(item.total / item.days).toLocaleString()
-                          : '—'}
+                        {item.days > 0 ? Math.round(item.total / item.days).toLocaleString() : '—'}
                       </td>
                       <td className="py-3 text-right font-semibold tabular-nums text-gray-800">
                         {Math.round(item.total).toLocaleString()}
@@ -178,8 +213,8 @@ export default function InvoiceModal({ admission, onClose }) {
               <div className="flex justify-end">
                 <div className="text-center w-52">
                   <div className="border-t border-gray-400 pt-2">
-                    <p className="text-sm font-semibold text-gray-700">Dr. Ebrahim Yusuf</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Attending Physician</p>
+                    <p className="text-sm font-semibold text-gray-700">{doctorName}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{doctorTitle}</p>
                   </div>
                 </div>
               </div>

@@ -379,6 +379,27 @@ export async function updateTeam(teamId, updates) {
   return data
 }
 
+export async function fetchTeamProfile(teamId) {
+  const { data, error } = await supabase
+    .from('teams')
+    .select('id, practice_name, doctor_name, doctor_title, address, phone, email, logo_url')
+    .eq('id', teamId)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function saveTeamProfile(teamId, updates) {
+  const { data, error } = await supabase
+    .from('teams')
+    .update(updates)
+    .eq('id', teamId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 // ─── CLAUDE VISION ───────────────────────────────────────────────────────────
 
 export async function scanPatientCard(imageBase64, mediaType = 'image/jpeg') {

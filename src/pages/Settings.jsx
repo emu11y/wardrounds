@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService } from '../lib/api'
+import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService, fetchTeamProfile, saveTeamProfile } from '../lib/api'
 
 const RATE_SERVICES = ['General Ward', 'HDU', 'ICU']
 const RATE_LABELS = { 'General Ward': 'Ward', HDU: 'HDU', ICU: 'ICU' }
@@ -23,6 +23,11 @@ export default function Settings() {
   const [savingRates, setSavingRates] = useState(false)
   const [ratesSaved, setRatesSaved] = useState(false)
 
+  const EMPTY_PRACTICE = { practice_name: '', doctor_name: '', doctor_title: 'Attending Physician', address: '', phone: '', email: '', logo_url: '' }
+  const [practiceForm, setPracticeForm] = useState(EMPTY_PRACTICE)
+  const [savingPractice, setSavingPractice] = useState(false)
+  const [practiceSaved, setPracticeSaved] = useState(false)
+
   const loadHospitals = async () => {
     if (!user?.team_id) return
     const data = await getHospitalsByTeam(user.team_id)
@@ -39,8 +44,48 @@ export default function Settings() {
     setRates(init)
   }
 
+  const loadPractice = async () => {
+    if (!user?.team_id) return
+    try {
+      const data = await fetchTeamProfile(user.team_id)
+      if (data) {
+        setPracticeForm({
+          practice_name: data.practice_name || '',
+          doctor_name:   data.doctor_name   || '',
+          doctor_title:  data.doctor_title  || 'Attending Physician',
+          address:       data.address       || '',
+          phone:         data.phone         || '',
+          email:         data.email         || '',
+          logo_url:      data.logo_url      || '',
+        })
+      }
+    } catch { /* columns may not exist yet — silently ignore */ }
+  }
+
+  const handleSavePractice = async () => {
+    if (!user?.team_id) return
+    setSavingPractice(true)
+    try {
+      await saveTeamProfile(user.team_id, {
+        practice_name: practiceForm.practice_name.trim(),
+        doctor_name:   practiceForm.doctor_name.trim(),
+        doctor_title:  practiceForm.doctor_title.trim(),
+        address:       practiceForm.address.trim(),
+        phone:         practiceForm.phone.trim(),
+        email:         practiceForm.email.trim(),
+        logo_url:      practiceForm.logo_url.trim(),
+      })
+      setPracticeSaved(true)
+      setTimeout(() => setPracticeSaved(false), 3000)
+    } catch (err) {
+      alert('Failed to save practice details: ' + err.message)
+    }
+    setSavingPractice(false)
+  }
+
   useEffect(() => {
     loadHospitals()
+    loadPractice()
   }, [user?.team_id])
 
   const openAddModal = () => {
@@ -293,6 +338,106 @@ export default function Settings() {
             {savingRates ? 'Saving...' : 'Save Rates'}
           </button>
           {ratesSaved && <span className="text-green-600 text-sm font-medium">Rates saved!</span>}
+        </div>
+      </div>
+
+      {/* ── Practice Details ─────────────────────────────────────────────────── */}
+      <div className="bg-white p-4 md:p-6 rounded-xl shadow mt-6">
+        <h2 className="text-xl font-bold mb-1">Practice Details</h2>
+        <p className="text-sm text-gray-500 mb-5">Used on invoices — doctor name, clinic info, and optional logo.</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Practice / Clinic Name</label>
+            <input
+              type="text"
+              value={practiceForm.practice_name}
+              onChange={e => setPracticeForm(f => ({ ...f, practice_name: e.target.value }))}
+              placeholder="e.g. Yusuf Specialist Clinic"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Doctor Name</label>
+            <input
+              type="text"
+              value={practiceForm.doctor_name}
+              onChange={e => setPracticeForm(f => ({ ...f, doctor_name: e.target.value }))}
+              placeholder="e.g. Dr. Ebrahim Yusuf"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Doctor Title</label>
+            <input
+              type="text"
+              value={practiceForm.doctor_title}
+              onChange={e => setPracticeForm(f => ({ ...f, doctor_title: e.target.value }))}
+              placeholder="e.g. Attending Physician"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
+            <input
+              type="text"
+              value={practiceForm.address}
+              onChange={e => setPracticeForm(f => ({ ...f, address: e.target.value }))}
+              placeholder="e.g. Medical Towers, Nairobi"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+            <input
+              type="text"
+              value={practiceForm.phone}
+              onChange={e => setPracticeForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="e.g. +254 700 000 000"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={practiceForm.email}
+              onChange={e => setPracticeForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="e.g. dr.yusuf@clinic.com"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Logo URL <span className="text-gray-400 font-normal">(optional — paste a direct image link)</span>
+            </label>
+            <input
+              type="url"
+              value={practiceForm.logo_url}
+              onChange={e => setPracticeForm(f => ({ ...f, logo_url: e.target.value }))}
+              placeholder="https://example.com/logo.png"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+            {practiceForm.logo_url && (
+              <img
+                src={practiceForm.logo_url}
+                alt="Logo preview"
+                className="mt-2 h-10 w-auto object-contain rounded border border-gray-100"
+                onError={e => { e.currentTarget.style.display = 'none' }}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            onClick={handleSavePractice}
+            disabled={savingPractice}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            {savingPractice ? 'Saving...' : 'Save Practice Details'}
+          </button>
+          {practiceSaved && <span className="text-green-600 text-sm font-medium">Saved!</span>}
         </div>
       </div>
 
