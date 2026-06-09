@@ -140,7 +140,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Settings</h1>
         <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition">
@@ -148,63 +148,59 @@ export default function Settings() {
         </button>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow">
+      <div className="bg-white p-4 md:p-6 rounded-xl shadow">
         <h2 className="text-xl font-bold mb-4">Daily Visit Rates (KES)</h2>
         {hospitals.length === 0 ? (
           <p className="text-gray-500">No hospitals yet. Click "Add Hospital" to get started.</p>
         ) : (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-100 border-b-2">
-                <th className="text-left px-4 py-2">Hospital</th>
-                {RATE_SERVICES.map(svc => (
-                  <th key={svc} className="px-4 py-2">{RATE_LABELS[svc]}</th>
-                ))}
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* ── Mobile: one card per hospital ──────────────────────────────── */}
+            <div className="block md:hidden space-y-3">
               {hospitals.map((h) => {
                 const isInactive = h.status === 'inactive'
                 return (
-                  <tr key={h.id} className={`border-b ${isInactive ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-3 font-semibold">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="inline-block w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: h.color || DEFAULT_COLOR }}
-                        />
-                        {h.name}
+                  <div
+                    key={h.id}
+                    className={`glass-card border-l-4 ${isInactive ? 'opacity-50' : ''}`}
+                    style={{ borderLeftColor: h.color || DEFAULT_COLOR }}
+                  >
+                    <div className="mb-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: h.color || DEFAULT_COLOR }} />
+                        <span className="font-semibold">{h.name}</span>
                         {isInactive && (
                           <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>
                         )}
                       </div>
-                      {h.location ? <span className="block text-sm text-gray-500 font-normal pl-5">{h.location}</span> : null}
-                    </td>
-                    {RATE_SERVICES.map((svc) => (
-                      <td key={svc} className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          className="w-24 px-2 py-1 border rounded text-center"
-                          placeholder="0"
-                          value={rates[h.id]?.[svc] ?? ''}
-                          onChange={(e) => setRates(prev => ({
-                            ...prev,
-                            [h.id]: { ...prev[h.id], [svc]: e.target.value },
-                          }))}
-                        />
-                      </td>
-                    ))}
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {h.location && <p className="text-sm text-gray-500 mt-0.5 pl-5">{h.location}</p>}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      {RATE_SERVICES.map((svc) => (
+                        <div key={svc} className="flex flex-col items-center gap-1">
+                          <label className="text-xs text-gray-500 font-medium">{RATE_LABELS[svc]}</label>
+                          <input
+                            type="number"
+                            className="w-full px-2 py-1.5 border rounded-lg text-center text-sm"
+                            placeholder="0"
+                            value={rates[h.id]?.[svc] ?? ''}
+                            onChange={(e) => setRates(prev => ({
+                              ...prev,
+                              [h.id]: { ...prev[h.id], [svc]: e.target.value },
+                            }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
                       <button
                         onClick={() => openEditModal(h)}
-                        className="px-3 py-1 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition mr-2"
+                        className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleToggleStatus(h)}
-                        className={`px-3 py-1 text-sm border rounded-lg transition ${
+                        className={`flex-1 px-3 py-1.5 text-sm border rounded-lg transition ${
                           isInactive
                             ? 'border-green-300 text-green-600 hover:bg-green-50'
                             : 'border-orange-200 text-orange-500 hover:bg-orange-50'
@@ -212,12 +208,81 @@ export default function Settings() {
                       >
                         {isInactive ? 'Activate' : 'Deactivate'}
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 )
               })}
-            </tbody>
-          </table>
+            </div>
+
+            {/* ── Desktop: table layout ──────────────────────────────────────── */}
+            <div className="hidden md:block">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 border-b-2">
+                    <th className="text-left px-4 py-2">Hospital</th>
+                    {RATE_SERVICES.map(svc => (
+                      <th key={svc} className="px-4 py-2">{RATE_LABELS[svc]}</th>
+                    ))}
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hospitals.map((h) => {
+                    const isInactive = h.status === 'inactive'
+                    return (
+                      <tr key={h.id} className={`border-b ${isInactive ? 'opacity-50' : ''}`}>
+                        <td className="px-4 py-3 font-semibold">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-block w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: h.color || DEFAULT_COLOR }}
+                            />
+                            {h.name}
+                            {isInactive && (
+                              <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>
+                            )}
+                          </div>
+                          {h.location ? <span className="block text-sm text-gray-500 font-normal pl-5">{h.location}</span> : null}
+                        </td>
+                        {RATE_SERVICES.map((svc) => (
+                          <td key={svc} className="px-4 py-3 text-center">
+                            <input
+                              type="number"
+                              className="w-24 px-2 py-1 border rounded text-center"
+                              placeholder="0"
+                              value={rates[h.id]?.[svc] ?? ''}
+                              onChange={(e) => setRates(prev => ({
+                                ...prev,
+                                [h.id]: { ...prev[h.id], [svc]: e.target.value },
+                              }))}
+                            />
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => openEditModal(h)}
+                            className="px-3 py-1 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition mr-2"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(h)}
+                            className={`px-3 py-1 text-sm border rounded-lg transition ${
+                              isInactive
+                                ? 'border-green-300 text-green-600 hover:bg-green-50'
+                                : 'border-orange-200 text-orange-500 hover:bg-orange-50'
+                            }`}
+                          >
+                            {isInactive ? 'Activate' : 'Deactivate'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         <div className="mt-4 flex items-center gap-3">
           <button
