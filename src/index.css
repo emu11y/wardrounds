@@ -109,3 +109,20 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+@media print {
+  /* Hide everything, then reveal only the invoice sheet */
+  body * { visibility: hidden; }
+  .invoice-for-print,
+  .invoice-for-print * { visibility: visible; }
+  .invoice-for-print {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* Suppress browser-added headers/footers where supported */
+  @page { margin: 1cm; }
+}

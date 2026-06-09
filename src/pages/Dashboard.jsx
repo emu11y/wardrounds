@@ -9,6 +9,7 @@ import PatientCard from '../components/PatientCard'
 import AddNotesModal from './modals/AddNotesModal'
 import AddServicesModal from './modals/AddServicesModal'
 import TransferModal from './modals/TransferModal'
+import InvoiceModal from './modals/InvoiceModal'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [expandedId, setExpandedId] = useState(null)
   const [selectedHospitalId, setSelectedHospitalId] = useState(null)
   const [visitedHospitals, setVisitedHospitals] = useState(new Set())
+  const [invoiceAdmission, setInvoiceAdmission] = useState(null)
 
   const load = useCallback(async () => {
     if (!user?.team_id) return
@@ -222,7 +224,7 @@ export default function Dashboard() {
                 onAddNotes={setNotesAdmission}
                 onAddServices={setServicesAdmission}
                 onTransfer={setTransferAdmission}
-                onInvoice={(a) => alert(`Invoice for ${a.patients?.first_name} — coming in Phase 2`)}
+                onInvoice={setInvoiceAdmission}
               />
             ))}
           </div>
@@ -249,6 +251,12 @@ export default function Dashboard() {
           admission={transferAdmission}
           onClose={() => setTransferAdmission(null)}
           onSaved={() => { setTransferAdmission(null); load() }}
+        />
+      )}
+      {invoiceAdmission && (
+        <InvoiceModal
+          admission={invoiceAdmission}
+          onClose={() => setInvoiceAdmission(null)}
         />
       )}
     </div>
