@@ -108,13 +108,12 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
   const [billingRecords, setBillingRecords] = useState([])
   useEffect(() => {
-    if (!admission.id) return
+    if (!admission?.id) return;
     const load = async () => {
       try {
         const records = await fetchBillingRecords(admission.id)
         const base = records || []
         setBillingRecords(base)
-        console.log('Fetched billing records:', base)
         // Gap fill is best-effort; don't block display if it fails
         try {
           const filled = await fillDailyBillingGaps(admission, base)
