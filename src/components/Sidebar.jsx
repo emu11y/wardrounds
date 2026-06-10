@@ -11,7 +11,6 @@ const navItems = [
   { to: '/patients', icon: Users, label: 'Patients' },
   { to: '/admit', icon: UserPlus, label: 'Admit' },
   { to: '/analytics', icon: BarChart2, label: 'Analytics' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export default function Sidebar() {
@@ -116,31 +115,42 @@ export default function Sidebar() {
               {userExpanded && (
                 <div className="mt-1 space-y-0.5 pl-3">
                   <button
-                    onClick={() => { navigate('/settings?tab=billing'); setMobileOpen(false) }}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                    onClick={() => { navigate('/settings'); setMobileOpen(false); setUserExpanded(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
                   >
-                    Billing Settings
+                    <Settings size={13} className="flex-shrink-0" />
+                    Settings
                   </button>
                   <button
-                    onClick={() => { navigate('/settings?tab=admin'); setMobileOpen(false) }}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                    onClick={() => { handleLogout(); setMobileOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-ios-red hover:bg-ios-red/10 transition-all"
                   >
-                    Admin Settings
+                    <LogOut size={13} className="flex-shrink-0" />
+                    Sign Out
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          <button
-            onClick={handleLogout}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm
-                        text-ios-red hover:bg-ios-red/10 transition-all
-                        ${collapsed ? 'md:justify-center md:px-2' : ''}`}
-          >
-            <LogOut size={18} className="flex-shrink-0" />
-            <span className={collapsed ? 'md:hidden' : ''}>Sign Out</span>
-          </button>
+          {collapsed && (
+            <>
+              <button
+                onClick={() => navigate('/settings')}
+                className="hidden md:flex w-full items-center justify-center px-2 py-2.5 rounded-2xl text-sm text-ios-gray-1 hover:bg-black/5 transition-all"
+                title="Settings"
+              >
+                <Settings size={18} />
+              </button>
+              <button
+                onClick={handleLogout}
+                className="hidden md:flex w-full items-center justify-center px-2 py-2.5 rounded-2xl text-sm text-ios-red hover:bg-ios-red/10 transition-all"
+                title="Sign Out"
+              >
+                <LogOut size={18} />
+              </button>
+            </>
+          )}
 
           <button
             onClick={() => setCollapsed(!collapsed)}

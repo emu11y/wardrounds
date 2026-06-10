@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   FileText, Plus, ArrowRight, Receipt, LogOut, Trash2,
-  ChevronDown, ChevronUp, Shield, Stethoscope,
+  ChevronDown, ChevronUp, Shield,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { dischargeAdmission, deleteAdmission, fetchBillingRecords } from '../lib/api'
-import { formatKES } from '../lib/utils'
+import { dischargeAdmission, deleteAdmission, fetchBillingRecords, fillDailyBillingGaps, fetchAdmissionServices, deleteAdmissionService } from '../lib/api'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,39 +36,36 @@ function fmtNoteDate(d) {
   })
 }
 
-function fmtServiceDate(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-}
-
 function daysBetween(from, to) {
   return Math.max(1, Math.ceil((new Date(to) - new Date(from)) / 86400000))
 }
 
 function daysSince(d) {
   if (!d) return 0
-  return Math.floor((new Date() - new Date(d)) / 86400000)
+  const start = new Date(d).setHours(0, 0, 0, 0)
+  const today = new Date().setHours(0, 0, 0, 0)
+  return Math.max(1, Math.ceil(Math.abs(today - start) / 86400000) + 1)
 }
 
-// Returns ward-stay segments and service charges as a flat sorted list
-function buildBillingLines(admission) {
+
+const WARD_COLORS = { 'ICU': '#ef4444', 'HDU': '#f97316', 'General Ward': '#22c55e' }
+function wardColor(name) { return WARD_COLORS[name] || '#3b82f6' }
+
+function buildWardLines(admission) {
   const hospitalServices = admission.hospitals?.hospital_services || []
 
   const wardEvents = [...(admission.timeline_events || [])]
     .filter(ev => ev.event_type === 'admitted' || ev.event_type === 'transferred')
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
 
-  const lines = []
-
-  wardEvents.forEach((ev, i) => {
+  return wardEvents.map((ev, i) => {
     const ward = ev.ward || admission.ward
     const from = ev.timestamp
     const to = wardEvents[i + 1]?.timestamp ?? new Date().toISOString()
     const days = daysBetween(from, to)
     const svc = hospitalServices.find(s => s.service_name === ward)
     const rate = Number(svc?.price_per_day ?? 0)
-    lines.push({
-      type: 'ward',
+    return {
       ward,
       label: ev.event_type === 'admitted' ? `Admitted · ${fmtShort(from)}` : `Transferred · ${fmtShort(from)}`,
       date: new Date(from),
@@ -77,65 +73,80 @@ function buildBillingLines(admission) {
       rate,
       total: days * rate,
       isCurrent: i === wardEvents.length - 1,
-    })
+    }
   })
-
-  for (const s of (admission.services_rendered || [])) {
-    lines.push({
-      type: 'service',
-      label: s.hospital_services?.service_name || 'Service',
-      date: new Date(s.rendered_date),
-      qty: Number(s.quantity),
-      unitPrice: Number(s.price_applied),
-      total: Number(s.quantity) * Number(s.price_applied),
-      dateStr: fmtServiceDate(s.rendered_date),
-    })
-  }
-
-  lines.sort((a, b) => a.date - b.date)
-  return lines
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function PatientCard({ admission, isExpanded, isNew, onToggleExpand, onRefresh, onAddNotes, onAddServices, onTransfer, onInvoice }) {
   const { user } = useAuth()
-  const [billingOpen, setBillingOpen] = useState(true)
   const [discharging, setDischarging] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deletingSvcId, setDeletingSvcId] = useState(null)
 
   const { patients: patient, hospitals: hospital } = admission
 
   const notes = [...(admission.patient_notes || [])].sort(
     (a, b) => new Date(a.created_at) - new Date(b.created_at)
   )
-  const services = [...(admission.services_rendered || [])].sort(
-    (a, b) => new Date(a.rendered_date) - new Date(b.rendered_date)
-  )
 
-  const billingLines = buildBillingLines(admission)
-  const wardLines     = billingLines.filter(l => l.type === 'ward')
-  const svcLines     = billingLines.filter(l => l.type === 'service')
-  const svcTotal     = svcLines.reduce((s, l) => s + l.total, 0)
+  const [admissionServices, setAdmissionServices] = useState([])
+
+  const loadServices = () =>
+    fetchAdmissionServices(admission.id)
+      .then(data => setAdmissionServices(
+        [...(data || [])].sort((a, b) => new Date(a.added_at) - new Date(b.added_at))
+      ))
+      .catch(console.error)
+
+  useEffect(() => { loadServices() }, [admission.id])
+
+  const admissionServicesTotal = admissionServices.reduce((s, svc) => s + Number(svc.price), 0)
+
+  const wardLines = buildWardLines(admission)
 
   const [billingRecords, setBillingRecords] = useState([])
   useEffect(() => {
-    fetchBillingRecords(admission.id)
-      .then(data => setBillingRecords(data || []))
-      .catch(console.error)
+    if (!admission.id) return
+    const load = async () => {
+      try {
+        const records = await fetchBillingRecords(admission.id)
+        const base = records || []
+        setBillingRecords(base)
+        console.log('Fetched billing records:', base)
+        // Gap fill is best-effort; don't block display if it fails
+        try {
+          const filled = await fillDailyBillingGaps(admission, base)
+          if (filled.length !== base.length) setBillingRecords(filled)
+        } catch (e) {
+          console.warn('fillDailyBillingGaps:', e.message)
+        }
+      } catch (error) {
+        console.error('Error fetching billing records:', error)
+        setBillingRecords([])
+      }
+    }
+    load()
   }, [admission.id])
 
   const wardTotal  = billingRecords.reduce((s, r) => s + Number(r.amount), 0)
-  const grandTotal = wardTotal + svcTotal
+  const grandTotal = wardTotal + admissionServicesTotal
 
-  // Current ward's daily accrual rate
-  const hospitalServices = hospital?.hospital_services || []
-  const currentWardSvc   = hospitalServices.find(s => s.service_name === admission.ward)
-  const dailyRate        = Number(currentWardSvc?.price_per_day ?? 0)
-
-  const age  = calcAge(patient?.date_of_birth)
-  const days = Math.max(0, daysSince(admission.team_start_date || admission.admission_date))
+  const age     = calcAge(patient?.date_of_birth)
+  const days    = Math.max(0, daysSince(admission.team_start_date || admission.admission_date))
   const shortId = admission.id.slice(0, 8).toUpperCase()
+
+  const billingBreakdown = (() => {
+    const items = []
+    if (wardTotal > 0) {
+      items.push({ type: 'ward', name: admission.ward || 'Ward', days, rate: days > 0 ? wardTotal / days : 0, total: wardTotal })
+    }
+    admissionServices.forEach(svc => {
+      items.push({ type: 'service', id: svc.id, name: svc.service_name, total: Number(svc.price || 0), billingType: svc.billing_type || 'one-off' })
+    })
+    return items
+  })()
 
   const isActive = admission.status === 'admitted'
 
@@ -155,11 +166,19 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     finally { setDeleting(false) }
   }
 
+  async function handleDeleteService(svcId) {
+    if (!confirm('Remove this service charge?')) return
+    setDeletingSvcId(svcId)
+    try { await deleteAdmissionService(svcId); loadServices() }
+    catch (e) { alert(e.message) }
+    finally { setDeletingSvcId(null) }
+  }
+
   const accentColor = hospital?.color || '#3B82F6'
 
   return (
     <div
-      className="glass-card hover:shadow-glass-md transition-all duration-200 border-l-4"
+      className="glass-card hover:shadow-glass-md transition-shadow duration-200 border-l-4"
       style={{ borderLeftColor: accentColor }}
     >
 
@@ -231,171 +250,129 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
       </div>
 
       {/* ── EXPANDED DETAIL ─────────────────────────────────────────────────── */}
-      <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-[2000px]' : 'max-h-0'}`}>
+      <div className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[2000px]' : 'max-h-0'}`}>
         <div className="border-t border-white/20 pt-4 space-y-5">
 
-          {/* BILLING ─────────────────────────────────────────────────────────── */}
+          {/* STAY TIMELINE ──────────────────────────────────────────────────── */}
           <section>
-            {/* Billing section header with collapse toggle */}
-            <button
-              onClick={() => setBillingOpen(v => !v)}
-              className="w-full flex items-center justify-between mb-3 group"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
-                Billing
-              </span>
-              <span className="text-ios-gray-1 group-hover:text-gray-600 transition-colors">
-                {billingOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-              </span>
-            </button>
-
-            {billingOpen && (
-              <div className="space-y-4">
-
-                {/* Stay timeline */}
-                <div>
-                  {wardLines.map((line, i) => (
-                    <div key={i} className="flex gap-3">
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 ${
-                          line.isCurrent && isActive ? 'bg-ios-green' : 'bg-ios-gray-3'
-                        }`} />
-                        {(i < wardLines.length - 1 || isActive) && (
-                          <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '2rem' }} />
-                        )}
-                      </div>
-                      <div className={`flex-1 ${(i < wardLines.length - 1 || isActive) ? 'pb-2' : ''}`}>
-                        <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">
-                          {line.label}
+            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-3">
+              Stay Timeline
+            </p>
+            {wardLines.length > 0 ? (
+              <>
+                {wardLines.map((line, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5"
+                        style={{ backgroundColor: line.isCurrent && isActive ? '#34c759' : '#c7c7cc' }}
+                      />
+                      {(i < wardLines.length - 1 || isActive) && (
+                        <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '2rem' }} />
+                      )}
+                    </div>
+                    <div className={`flex-1 ${(i < wardLines.length - 1 || isActive) ? 'pb-2' : ''}`}>
+                      <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">
+                        {line.label}
+                      </p>
+                      {line.rate > 0 ? (
+                        <p className="text-[11px] text-ios-gray-1 mt-0.5">
+                          {line.days}d · KES {Math.round(line.rate).toLocaleString()}/day
+                          {line.isCurrent && isActive && (
+                            <span className="ml-1.5 text-ios-green font-medium">(current)</span>
+                          )}
                         </p>
-                        {line.rate > 0 ? (
-                          <p className="text-[11px] text-ios-gray-1 mt-0.5">
-                            {line.days}d · KES {Math.round(line.rate).toLocaleString()}/day
-                            {line.isCurrent && isActive && (
-                              <span className="ml-1.5 text-ios-green font-medium">(current)</span>
-                            )}
-                          </p>
-                        ) : (
-                          <p className="text-[11px] text-ios-gray-2 mt-0.5">Rate not configured</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Active terminal dot */}
-                  {isActive && (
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        <div className="w-2.5 h-2.5 rounded-full bg-ios-green animate-pulse mt-0.5" />
-                      </div>
-                      <div>
-                        <p className="text-[12px] font-semibold text-ios-green">
-                          Active · {days} day{days !== 1 ? 's' : ''} total
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {wardLines.length === 0 && (
-                    <p className="text-[11px] text-ios-gray-2">No stay data yet</p>
-                  )}
-                </div>
-
-                {/* Summary rows */}
-                <div className="rounded-xl bg-black/[0.03] dark:bg-white/5 divide-y divide-white/10 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-ios-gray-1">Days</span>
-                    <div className="flex items-center gap-1.5 text-[11px] text-gray-700 dark:text-gray-200">
-                      <span className="font-bold">{days}</span>
-                      <span className="text-ios-gray-3">|</span>
-                      <span>{fmtDate(admission.admission_date)}</span>
-                      <span className="text-ios-gray-3">|</span>
-                      <span className={`font-semibold ${isActive ? 'text-ios-green' : 'text-ios-gray-1'}`}>
-                        {isActive ? 'Active' : admission.status}
-                      </span>
+                      ) : (
+                        <p className="text-[11px] text-ios-gray-2 mt-0.5">Rate not configured</p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-ios-gray-1">
-                      Total {isActive ? '(live)' : ''}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {isActive && <span className="w-1.5 h-1.5 rounded-full bg-ios-green animate-pulse" />}
-                      <span className="text-[14px] font-bold tabular-nums text-gray-900 dark:text-gray-50">
-                        KES {Math.round(grandTotal).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Breakdown */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="text-ios-gray-1">Ward</span>
-                    <span className="font-semibold tabular-nums">
-                      KES {Math.round(wardTotal).toLocaleString()}
-                    </span>
-                  </div>
-                  {dailyRate > 0 && isActive && (
-                    <p className="text-[11px] text-ios-green font-medium">
-                      +KES {Math.round(dailyRate).toLocaleString()}/day (accruing)
+                ))}
+                {isActive && (
+                  <div className="flex gap-3">
+                    <div className="w-2.5 h-2.5 rounded-full bg-ios-green animate-pulse flex-shrink-0 mt-0.5" />
+                    <p className="text-[12px] font-semibold text-ios-green">
+                      Active · {days} day{days !== 1 ? 's' : ''} total
                     </p>
-                  )}
-                  {svcTotal > 0 && (
-                    <div className="flex items-center justify-between text-[12px]">
-                      <span className="text-ios-gray-1">Services</span>
-                      <span className="font-semibold tabular-nums">
-                        KES {Math.round(svcTotal).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] text-ios-gray-2">No stay data yet</p>
             )}
           </section>
 
-          {/* SERVICES ──────────────────────────────────────────────────────── */}
+          {/* BILLING BREAKDOWN ───────────────────────────────────────────────── */}
           <section>
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <Stethoscope size={12} className="text-ios-blue" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
-                Services {services.length > 0 ? `(${services.length})` : ''}
-              </span>
-              {services.length > 0 && (
-                <span className="text-[11px] text-ios-gray-1">— {formatKES(svcTotal)}</span>
-              )}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
+                Billing Breakdown
+              </p>
+              <div className="flex items-center gap-1.5">
+                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-ios-green animate-pulse" />}
+                <span className="text-[13px] font-bold tabular-nums text-gray-900 dark:text-gray-50">
+                  KES {Math.round(grandTotal).toLocaleString()}
+                </span>
+              </div>
             </div>
 
-            {services.length > 0 ? (
-              <div className="space-y-1.5 mb-2.5">
-                {services.map(s => (
-                  <div key={s.id} className="flex items-baseline justify-between gap-2">
-                    <span className="text-[12px] text-gray-700 dark:text-gray-200">
-                      • {s.hospital_services?.service_name}
-                      <span className="text-ios-gray-2"> ({fmtServiceDate(s.rendered_date)})</span>
-                    </span>
-                    <span className="text-[12px] font-semibold flex-shrink-0 tabular-nums">
-                      {formatKES(Number(s.price_applied) * Number(s.quantity))}
+            <div className="bg-gray-100/60 dark:bg-white/5 backdrop-blur-sm rounded-xl p-4 space-y-1.5">
+              {billingBreakdown.length === 0 ? (
+                <p className="text-[11px] text-ios-gray-2 py-1">No billing records yet</p>
+              ) : billingBreakdown.map((row, i) => row.type === 'ward' ? (
+                <div
+                  key={`ward-${i}`}
+                  className="flex items-center justify-between pl-3 py-1.5 rounded-lg"
+                  style={{ borderLeft: `3px solid ${wardColor(row.name)}` }}
+                >
+                  <div className="min-w-0">
+                    <span className="text-[12px] font-bold text-gray-800 dark:text-gray-100">{row.name}</span>
+                    <span className="text-[11px] text-ios-gray-1 ml-1.5">
+                      {row.days}d @ KES {Math.round(row.rate).toLocaleString()}/day
                     </span>
                   </div>
-                ))}
-                <div className="flex items-center justify-between pt-2 border-t border-white/20">
-                  <span className="text-[11px] text-ios-gray-1">Total</span>
-                  <span className="text-[12px] font-bold text-ios-blue tabular-nums">{formatKES(svcTotal)}</span>
+                  <span className="text-[12px] font-bold text-ios-blue tabular-nums ml-2 flex-shrink-0">
+                    KES {Math.round(row.total).toLocaleString()}
+                  </span>
                 </div>
-              </div>
-            ) : (
-              <p className="text-[11px] text-ios-gray-2 mb-2">No services recorded yet</p>
-            )}
+              ) : (
+                <div
+                  key={`svc-${row.id}`}
+                  className="flex items-center justify-between pl-3 py-1.5 rounded-lg"
+                  style={{ borderLeft: '3px solid #a855f7' }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[12px] font-semibold text-gray-800 dark:text-gray-100">{row.name}</span>
+                    {row.billingType && (
+                      <span className="text-[10px] text-ios-gray-2 ml-1.5">({row.billingType})</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[12px] font-bold text-ios-blue tabular-nums">
+                      KES {Math.round(row.total).toLocaleString()}
+                    </span>
+                    {isActive && (
+                      <button
+                        onClick={() => handleDeleteService(row.id)}
+                        disabled={deletingSvcId === row.id}
+                        className="text-ios-red hover:opacity-70 transition-opacity disabled:opacity-40"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
 
-            {isActive && (
-              <button
-                onClick={() => onAddServices?.(admission)}
-                className="flex items-center gap-1 text-[11px] font-semibold text-ios-blue hover:opacity-70 transition-opacity"
-              >
-                <Plus size={12} />Add Service
-              </button>
-            )}
+              <div className="flex items-center justify-between pt-2 mt-1 border-t border-white/20">
+                <span className="text-[11px] font-semibold text-ios-gray-1">
+                  Total{isActive ? ' (live)' : ''}
+                </span>
+                <span className="text-[13px] font-bold tabular-nums text-gray-900 dark:text-gray-50">
+                  KES {Math.round(grandTotal).toLocaleString()}
+                </span>
+              </div>
+            </div>
           </section>
 
           {/* NOTES ─────────────────────────────────────────────────────────── */}
@@ -407,40 +384,33 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
               </span>
             </div>
 
-            {notes.length > 0 ? (
-              <div className="mb-2.5">
-                {notes.map((note, i) => (
-                  <div key={note.id} className="flex gap-2.5">
-                    <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
-                      <div className="w-2 h-2 rounded-full border-[1.5px] border-ios-blue bg-white dark:bg-ios-blue flex-shrink-0" />
-                      {i < notes.length - 1 && (
-                        <div className="w-px flex-1 bg-ios-gray-4 my-1" style={{ minHeight: '1.5rem' }} />
-                      )}
+            <div className="bg-gray-100/60 dark:bg-white/5 backdrop-blur-sm rounded-xl p-4">
+              {notes.length > 0 ? (
+                <div>
+                  {notes.map((note, i) => (
+                    <div key={note.id} className="flex gap-2.5">
+                      <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                        <div className="w-2 h-2 rounded-full border-[1.5px] border-ios-blue bg-white dark:bg-ios-blue flex-shrink-0" />
+                        {i < notes.length - 1 && (
+                          <div className="w-px flex-1 bg-ios-gray-4 my-1" style={{ minHeight: '1.5rem' }} />
+                        )}
+                      </div>
+                      <div className={`flex-1 ${i < notes.length - 1 ? 'pb-3' : ''}`}>
+                        <p className="text-[11px] font-semibold text-ios-gray-1 leading-tight">
+                          {note.signature || note.users?.full_name || 'Unknown'}
+                          <span className="font-normal"> — {fmtNoteDate(note.created_at)}</span>
+                        </p>
+                        <p className="text-[13px] mt-1 leading-snug text-gray-800 dark:text-gray-100">
+                          "{note.note_text}"
+                        </p>
+                      </div>
                     </div>
-                    <div className={`flex-1 ${i < notes.length - 1 ? 'pb-3' : ''}`}>
-                      <p className="text-[11px] font-semibold text-ios-gray-1 leading-tight">
-                        {note.signature || note.users?.full_name || 'Unknown'}
-                        <span className="font-normal"> — {fmtNoteDate(note.created_at)}</span>
-                      </p>
-                      <p className="text-[13px] mt-1 leading-snug text-gray-800 dark:text-gray-100">
-                        "{note.note_text}"
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-ios-gray-2 mb-2">No notes yet</p>
-            )}
-
-            {isActive && (
-              <button
-                onClick={() => onAddNotes?.(admission)}
-                className="flex items-center gap-1 text-[11px] font-semibold text-ios-blue hover:opacity-70 transition-opacity"
-              >
-                <Plus size={12} />Add Note
-              </button>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-ios-gray-2">No notes yet</p>
+              )}
+            </div>
           </section>
 
         </div>
@@ -449,9 +419,11 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
       {/* ── ACTION BUTTONS ──────────────────────────────────────────────────── */}
       {isActive && (
         <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-white/20">
-          <ActionButton icon={ArrowRight} label="Transfer"  color="orange" onClick={() => onTransfer?.(admission)} />
-          <ActionButton icon={Receipt}    label="Invoice"   color="purple" onClick={() => onInvoice?.(admission)} />
-          <ActionButton icon={LogOut}     label="Discharge" color="green"  loading={discharging} onClick={handleDischarge} />
+          <ActionButton icon={ArrowRight} label="Transfer"    color="orange" onClick={() => onTransfer?.(admission)} />
+          <ActionButton icon={Receipt}    label="Invoice"     color="purple" onClick={() => onInvoice?.(admission)} />
+          <ActionButton icon={FileText}   label="Add Note"    color="blue"   onClick={() => onAddNotes?.(admission)} />
+          <ActionButton icon={Plus}       label="Add Service" color="blue"   onClick={() => onAddServices?.(admission, loadServices)} />
+          <ActionButton icon={LogOut}     label="Discharge"   color="green"  loading={discharging} onClick={handleDischarge} />
           {user?.role === 'admin' && (
             <ActionButton icon={Trash2}   label="Delete"    color="red"    loading={deleting} onClick={handleDelete} />
           )}

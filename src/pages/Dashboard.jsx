@@ -11,9 +11,26 @@ import AddServicesModal from './modals/AddServicesModal'
 import TransferModal from './modals/TransferModal'
 import InvoiceModal from './modals/InvoiceModal'
 
+function useColumnCount() {
+  function get() {
+    if (typeof window === 'undefined') return 1
+    if (window.innerWidth >= 1280) return 3
+    if (window.innerWidth >= 640) return 2
+    return 1
+  }
+  const [cols, setCols] = useState(get)
+  useEffect(() => {
+    const fn = () => setCols(get())
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return cols
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const numCols = useColumnCount()
   const [admissions, setAdmissions] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -24,7 +41,11 @@ export default function Dashboard() {
   const [transferAdmission, setTransferAdmission] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [selectedHospitalId, setSelectedHospitalId] = useState(null)
-  const [visitedHospitals, setVisitedHospitals] = useState(new Set())
+  const lsKey = user?.team_id ? `wr_visited_${user.team_id}` : null
+  const [visitedHospitals, setVisitedHospitals] = useState(() => {
+    if (!lsKey) return new Set()
+    try { return new Set(JSON.parse(localStorage.getItem(lsKey) || '[]')) } catch { return new Set() }
+  })
   const [invoiceAdmission, setInvoiceAdmission] = useState(null)
 
   const load = useCallback(async () => {
@@ -52,9 +73,19 @@ export default function Dashboard() {
     return () => supabase.removeChannel(channel)
   }, [user?.team_id, load])
 
+  // Refresh billing records every 60 s so ward totals stay current
+  useEffect(() => {
+    const id = setInterval(load, 60_000)
+    return () => clearInterval(id)
+  }, [load])
+
+  useEffect(() => {
+    if (!lsKey) return
+    localStorage.setItem(lsKey, JSON.stringify([...visitedHospitals]))
+  }, [visitedHospitals, lsKey])
+
   function handleRefresh() {
     setRefreshing(true)
-    setVisitedHospitals(new Set())
     load()
   }
 
@@ -212,20 +243,26 @@ export default function Dashboard() {
             </button>
           </div>
         ) : (
-          <div className="columns-1 sm:columns-2 xl:columns-3 gap-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
-            {filteredAdmissions.map(admission => (
-              <PatientCard
-                key={admission.id}
-                admission={admission}
-                isExpanded={expandedId === admission.id}
-                isNew={new Date(admission.created_at).toDateString() === todayStr}
-                onToggleExpand={() => setExpandedId(prev => prev === admission.id ? null : admission.id)}
-                onRefresh={load}
-                onAddNotes={setNotesAdmission}
-                onAddServices={setServicesAdmission}
-                onTransfer={setTransferAdmission}
-                onInvoice={setInvoiceAdmission}
-              />
+          <div className="flex gap-4 items-start">
+            {Array.from({ length: numCols }, (_, col) => (
+              <div key={col} className="flex-1 flex flex-col gap-4 min-w-0">
+                {filteredAdmissions
+                  .filter((_, i) => i % numCols === col)
+                  .map(admission => (
+                    <PatientCard
+                      key={admission.id}
+                      admission={admission}
+                      isExpanded={expandedId === admission.id}
+                      isNew={new Date(admission.created_at).toDateString() === todayStr}
+                      onToggleExpand={() => setExpandedId(prev => prev === admission.id ? null : admission.id)}
+                      onRefresh={load}
+                      onAddNotes={setNotesAdmission}
+                      onAddServices={(adm, cb) => setServicesAdmission({ admission: adm, onServiceAdded: cb })}
+                      onTransfer={setTransferAdmission}
+                      onInvoice={setInvoiceAdmission}
+                    />
+                  ))}
+              </div>
             ))}
           </div>
         )}
@@ -241,9 +278,10 @@ export default function Dashboard() {
       )}
       {servicesAdmission && (
         <AddServicesModal
-          admission={servicesAdmission}
+          admission={servicesAdmission.admission}
+          onServiceAdded={servicesAdmission.onServiceAdded}
           onClose={() => setServicesAdmission(null)}
-          onSaved={() => { setServicesAdmission(null); load() }}
+          onSaved={() => setServicesAdmission(null)}
         />
       )}
       {transferAdmission && (

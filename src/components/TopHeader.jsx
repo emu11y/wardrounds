@@ -1,19 +1,11 @@
 import { useState } from 'react'
-import { Bell, Settings, LogOut, Menu, X } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Bell, Menu, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { signOut } from '../lib/auth'
 import NotificationCenter from './NotificationCenter'
 
 export default function TopHeader({ title, onMenuToggle, menuOpen }) {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [showNotifications, setShowNotifications] = useState(false)
-
-  async function handleLogout() {
-    await signOut()
-    navigate('/login')
-  }
 
   return (
     <>
@@ -37,29 +29,13 @@ export default function TopHeader({ title, onMenuToggle, menuOpen }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowNotifications(true)}
-            className="relative p-2 rounded-xl hover:bg-black/5 transition-colors"
-          >
-            <Bell size={20} className="text-ios-gray-1" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-ios-red rounded-full" />
-          </button>
-
-          <button
-            onClick={() => navigate('/settings')}
-            className="p-2 rounded-xl hover:bg-black/5 transition-colors"
-          >
-            <Settings size={20} className="text-ios-gray-1" />
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-xl hover:bg-black/5 transition-colors"
-          >
-            <LogOut size={20} className="text-ios-gray-1" />
-          </button>
-        </div>
+        <button
+          onClick={() => setShowNotifications(true)}
+          className="relative p-2 rounded-xl hover:bg-black/5 transition-colors"
+        >
+          <Bell size={20} className="text-ios-gray-1" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-ios-red rounded-full" />
+        </button>
       </header>
 
       <NotificationCenter

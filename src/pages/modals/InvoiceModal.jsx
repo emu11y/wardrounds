@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Printer } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { fetchBillingRecords, fetchTeamProfile } from '../../lib/api'
+import { fetchBillingRecords, fetchTeamProfile, fetchAdmissionServices } from '../../lib/api'
 
 function fmt(d) {
   if (!d) return '—'
@@ -11,15 +11,18 @@ function fmt(d) {
 export default function InvoiceModal({ admission, onClose }) {
   const { user } = useAuth()
   const [billingRecords, setBillingRecords] = useState([])
+  const [admissionServices, setAdmissionServices] = useState([])
   const [practice, setPractice] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       fetchBillingRecords(admission.id),
+      fetchAdmissionServices(admission.id),
       user?.team_id ? fetchTeamProfile(user.team_id).catch(() => null) : Promise.resolve(null),
-    ]).then(([billing, prof]) => {
+    ]).then(([billing, svcData, prof]) => {
       setBillingRecords(billing || [])
+      setAdmissionServices(svcData || [])
       setPractice(prof)
     }).catch(console.error).finally(() => setLoading(false))
   }, [admission.id, user?.team_id])
@@ -39,8 +42,10 @@ export default function InvoiceModal({ admission, onClose }) {
     groups[name].days++
     groups[name].total += Number(record.amount)
   }
-  const lineItems  = Object.values(groups)
-  const grandTotal = lineItems.reduce((s, l) => s + l.total, 0)
+  const lineItems       = Object.values(groups)
+  const wardGrandTotal  = lineItems.reduce((s, l) => s + l.total, 0)
+  const svcGrandTotal   = admissionServices.reduce((s, svc) => s + Number(svc.price), 0)
+  const grandTotal      = wardGrandTotal + svcGrandTotal
 
   const hasPractice = practice && (
     practice.practice_name || practice.doctor_name ||
@@ -169,24 +174,47 @@ export default function InvoiceModal({ admission, onClose }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {lineItems.length === 0 ? (
+                  {lineItems.length === 0 && admissionServices.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="py-8 text-center text-gray-300 italic">
                         No billing records yet
                       </td>
                     </tr>
-                  ) : lineItems.map((item, i) => (
-                    <tr key={i} className="border-b border-gray-100">
-                      <td className="py-3 font-medium text-gray-800">{item.name}</td>
-                      <td className="py-3 text-center text-gray-600 tabular-nums">{item.days}</td>
-                      <td className="py-3 text-right text-gray-600 tabular-nums">
-                        {item.days > 0 ? Math.round(item.total / item.days).toLocaleString() : '—'}
-                      </td>
-                      <td className="py-3 text-right font-semibold tabular-nums text-gray-800">
-                        {Math.round(item.total).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
+                  ) : (
+                    <>
+                      {lineItems.map((item, i) => (
+                        <tr key={i} className="border-b border-gray-100">
+                          <td className="py-3 font-medium text-gray-800">{item.name}</td>
+                          <td className="py-3 text-center text-gray-600 tabular-nums">{item.days}</td>
+                          <td className="py-3 text-right text-gray-600 tabular-nums">
+                            {item.days > 0 ? Math.round(item.total / item.days).toLocaleString() : '—'}
+                          </td>
+                          <td className="py-3 text-right font-semibold tabular-nums text-gray-800">
+                            {Math.round(item.total).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                      {admissionServices.length > 0 && (
+                        <>
+                          <tr>
+                            <td colSpan={4} className="pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                              Procedures &amp; Tests
+                            </td>
+                          </tr>
+                          {admissionServices.map(svc => (
+                            <tr key={svc.id} className="border-b border-gray-100">
+                              <td className="py-3 font-medium text-gray-800">{svc.service_name}</td>
+                              <td className="py-3 text-center text-gray-400">—</td>
+                              <td className="py-3 text-right text-gray-400">—</td>
+                              <td className="py-3 text-right font-semibold tabular-nums text-gray-800">
+                                {Math.round(Number(svc.price)).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200">

@@ -269,6 +269,48 @@ export async function fetchBillingRecords(admissionId) {
   return data
 }
 
+// Fills missing daily ward records when the edge function hasn't run.
+// Safe to call on every card mount — skips if up-to-date.
+export async function fillDailyBillingGaps(admission, existingRecords) {
+  const eatOffset = 3 * 60 * 60 * 1000
+  const todayEAT  = new Date(Date.now() + eatOffset).toISOString().split('T')[0]
+
+  const hospitalServices = admission.hospitals?.hospital_services || []
+  const wardSvc = hospitalServices.find(s => s.service_name === admission.ward)
+  if (!wardSvc) return existingRecords
+
+  const wardRecords = existingRecords.filter(r => r.service_id === wardSvc.id)
+  if (wardRecords.length === 0) return existingRecords
+
+  const lastDate = wardRecords.reduce((max, r) =>
+    r.accrual_date > max ? r.accrual_date : max, wardRecords[0].accrual_date
+  )
+  if (lastDate >= todayEAT) return existingRecords
+
+  const existingDates = new Set(existingRecords.map(r => r.accrual_date))
+  const toInsert = []
+  const cursor = new Date(lastDate)
+  cursor.setDate(cursor.getDate() + 1)
+  while (cursor.toISOString().split('T')[0] <= todayEAT) {
+    const d = cursor.toISOString().split('T')[0]
+    if (!existingDates.has(d)) {
+      toInsert.push({
+        admission_id: admission.id,
+        service_id: wardSvc.id,
+        accrual_date: d,
+        amount: wardSvc.price_per_day,
+        status: 'pending',
+      })
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  if (toInsert.length === 0) return existingRecords
+
+  const { data, error } = await supabase.from('billing_records').insert(toInsert).select()
+  if (error) { console.warn('fillDailyBillingGaps:', error.message); return existingRecords }
+  return [...existingRecords, ...(data || [])]
+}
+
 export async function updateBilling(id, updates) {
   const { data, error } = await supabase
     .from('billing_records')
@@ -484,6 +526,96 @@ export async function setHospitalStatus(id, status) {
     .from('hospitals')
     .update({ status })
     .eq('id', id)
+  if (error) throw error
+}
+
+// ─── TEAM SERVICES ────────────────────────────────────────────────────────────
+
+export async function fetchTeamServices(teamId) {
+  const { data, error } = await supabase
+    .from('team_services')
+    .select('*')
+    .eq('team_id', teamId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createTeamService(data) {
+  const { data: result, error } = await supabase
+    .from('team_services')
+    .insert(data)
+    .select()
+    .single()
+  if (error) throw error
+  return result
+}
+
+export async function updateTeamService(id, updates) {
+  const { data, error } = await supabase
+    .from('team_services')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function setTeamServiceStatus(id, status) {
+  const { error } = await supabase
+    .from('team_services')
+    .update({ status })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteTeamService(id) {
+  const { error } = await supabase.from('team_services').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function addTeamServiceCharge({ admission_id, quantity, price, rendered_date }) {
+  const { data, error } = await supabase.from('billing_records').insert({
+    admission_id,
+    accrual_date: rendered_date,
+    amount: price * quantity,
+    status: 'pending',
+  }).select().single()
+  if (error) throw error
+  return data
+}
+
+// ─── ADMISSION SERVICES ───────────────────────────────────────────────────────
+
+export async function fetchAdmissionServices(admissionId) {
+  const { data, error } = await supabase
+    .from('admission_services')
+    .select('*')
+    .eq('admission_id', admissionId)
+    .order('added_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createAdmissionService(admissionId, teamServiceId, serviceName, price, billingType) {
+  const { data, error } = await supabase
+    .from('admission_services')
+    .insert({
+      admission_id: admissionId,
+      team_service_id: teamServiceId,
+      service_name: serviceName,
+      price,
+      billing_type: billingType,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteAdmissionService(id) {
+  const { error } = await supabase.from('admission_services').delete().eq('id', id)
   if (error) throw error
 }
 
