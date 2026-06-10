@@ -3,6 +3,7 @@ import { Search, ChevronDown, ChevronUp, UserPlus, Clock, MapPin, Shield, Rotate
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { fetchPatients, fetchAdmissionsForPatient, createAdmission } from '../lib/api'
+import { getStatusBadgeStyle } from '../lib/statusBadges'
 import TopHeader from '../components/TopHeader'
 
 function calcAge(dob) {
@@ -157,15 +158,14 @@ export default function Patients() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {latest && (
-                        <span className={`status-badge ${
-                          latest.status === 'admitted' ? 'status-admitted' :
-                          latest.status === 'transferred' ? 'status-transferred' :
-                          'status-discharged'
-                        }`}>
-                          {latest.status}
-                        </span>
-                      )}
+                      {latest && (() => {
+                        const s = getStatusBadgeStyle(latest.status)
+                        return (
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${s.className}`}>
+                            {s.icon} {s.text}
+                          </span>
+                        )
+                      })()}
                       {isOpen ? <ChevronUp size={16} className="text-ios-gray-1" /> : <ChevronDown size={16} className="text-ios-gray-1" />}
                     </div>
                   </button>
@@ -182,11 +182,14 @@ export default function Patients() {
                         admissions.map(adm => (
                           <div key={adm.id} className="bg-white/40 dark:bg-white/5 rounded-2xl p-3 space-y-2">
                             <div className="flex items-center justify-between">
-                              <span className={`status-badge ${
-                                adm.status === 'admitted' ? 'status-admitted' :
-                                adm.status === 'transferred' ? 'status-transferred' :
-                                'status-discharged'
-                              }`}>{adm.status}</span>
+                              {(() => {
+                                const s = getStatusBadgeStyle(adm.status)
+                                return (
+                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${s.className}`}>
+                                    {s.icon} {s.text}
+                                  </span>
+                                )
+                              })()}
                               <span className="text-xs text-ios-gray-1 flex items-center gap-1">
                                 <Clock size={10} /> {formatDate(adm.admission_date)}
                               </span>

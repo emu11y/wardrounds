@@ -262,13 +262,13 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     setIsProcessing(true)
     setActionError(null)
 
-    try {
-      await deleteAdmission(admission.id)
+    const result = await deleteAdmission(admission.id)
+    if (result.success) {
       console.log('✅ Patient archived:', patient.first_name, patient.last_name)
       onRefresh?.()
-    } catch (error) {
+    } else {
       setActionError('Failed to delete patient')
-      console.error('deleteAdmission error:', error)
+      console.error('deleteAdmission error:', result.error)
     }
     setIsProcessing(false)
   }

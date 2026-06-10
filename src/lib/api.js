@@ -184,18 +184,24 @@ export async function transferAdmission(admissionId, newWard, newHospitalId) {
   return data
 }
 
-// TASK 4: SOFT DELETE (archive patient)
+// TASK 4: SOFT DELETE (archive patient) — uses 'archived' status to distinguish from 'discharged'
 export async function deleteAdmission(admissionId) {
-  const { data, error } = await supabase
-    .from('admissions')
-    .update({
-      status: 'inactive',
-      discharged_at: new Date().toISOString()
-    })
-    .eq('id', admissionId)
-    .select()
-  if (error) throw error
-  return data?.[0]
+  try {
+    const { data, error } = await supabase
+      .from('admissions')
+      .update({
+        status: 'archived'
+      })
+      .eq('id', admissionId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return { success: true, data }
+  } catch (error) {
+    console.error('❌ deleteAdmission error:', error.message)
+    return { success: false, error }
+  }
 }
 
 // TASK 3: PAUSE BILLING (stops from next day, current day still charges)
