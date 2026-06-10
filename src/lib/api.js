@@ -184,9 +184,58 @@ export async function transferAdmission(admissionId, newWard, newHospitalId) {
   return data
 }
 
+// TASK 4: SOFT DELETE (archive patient)
 export async function deleteAdmission(admissionId) {
-  const { error } = await supabase.from('admissions').delete().eq('id', admissionId)
+  const { data, error } = await supabase
+    .from('admissions')
+    .update({
+      status: 'inactive',
+      discharged_at: new Date().toISOString()
+    })
+    .eq('id', admissionId)
+    .select()
   if (error) throw error
+  return data?.[0]
+}
+
+// TASK 3: PAUSE BILLING (stops from next day, current day still charges)
+export async function pauseBilling(admissionId) {
+  try {
+    const { data, error } = await supabase
+      .from('admissions')
+      .update({
+        billing_paused: true,
+        billing_paused_at: new Date().toISOString()
+      })
+      .eq('id', admissionId)
+      .select()
+
+    if (error) throw error
+    return { success: true, data: data?.[0] }
+  } catch (error) {
+    console.error('❌ pauseBilling error:', error.message)
+    return { success: false, error }
+  }
+}
+
+// TASK 3: RESUME BILLING (restarts immediately on same day)
+export async function resumeBilling(admissionId) {
+  try {
+    const { data, error } = await supabase
+      .from('admissions')
+      .update({
+        billing_paused: false,
+        billing_paused_at: null
+      })
+      .eq('id', admissionId)
+      .select()
+
+    if (error) throw error
+    return { success: true, data: data?.[0] }
+  } catch (error) {
+    console.error('❌ resumeBilling error:', error.message)
+    return { success: false, error }
+  }
 }
 
 // ─── PATIENT NOTES ───────────────────────────────────────────────────────────

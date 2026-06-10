@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, Shield,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { dischargeAdmission, deleteAdmission, fetchBillingRecords, fillDailyBillingGaps, fetchAdmissionServices, deleteAdmissionService } from '../lib/api'
+import { dischargeAdmission, deleteAdmission, pauseBilling, resumeBilling, fetchBillingRecords, fillDailyBillingGaps, fetchAdmissionServices, deleteAdmissionService } from '../lib/api'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,8 +60,26 @@ function buildWardLines(admission) {
 
   return wardEvents.map((ev, i) => {
     const ward = ev.ward || admission.ward
-    const from = ev.timestamp
-    const to = wardEvents[i + 1]?.timestamp ?? new Date().toISOString()
+    let from = new Date(ev.timestamp)
+    let to = wardEvents[i + 1]?.timestamp ? new Date(wardEvents[i + 1].timestamp) : new Date()
+
+    // TASK 3: Skip paused periods
+    if (admission.billing_paused) {
+      const pausedDate = new Date(admission.billing_paused_at)
+      const nextDayAfterPause = new Date(pausedDate)
+      nextDayAfterPause.setDate(nextDayAfterPause.getDate() + 1)
+      nextDayAfterPause.setHours(0, 0, 0, 0)
+
+      // Skip entire period if it starts on or after pause cutoff
+      if (from >= nextDayAfterPause) {
+        return null
+      }
+      // Truncate period if it spans the pause cutoff
+      if (to > nextDayAfterPause) {
+        to = new Date(pausedDate)
+      }
+    }
+
     const days = daysBetween(from, to)
     const svc = hospitalServices.find(s => s.service_name === ward)
     const rate = Number(svc?.price_per_day ?? 0)
@@ -74,7 +92,7 @@ function buildWardLines(admission) {
       total: days * rate,
       isCurrent: i === wardEvents.length - 1,
     }
-  })
+  }).filter(Boolean)
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
@@ -84,6 +102,8 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
   const [discharging, setDischarging] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deletingSvcId, setDeletingSvcId] = useState(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [actionError, setActionError] = useState(null)
 
   const { patients: patient, hospitals: hospital } = admission
 
@@ -200,6 +220,59 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     finally { setDeletingSvcId(null) }
   }
 
+  const handlePauseBilling = async () => {
+    if (isProcessing) return
+    setIsProcessing(true)
+    setActionError(null)
+
+    const result = await pauseBilling(admission.id)
+    if (result.success) {
+      console.log('✅ Billing paused for', patient.first_name, patient.last_name)
+      onRefresh?.()
+    } else {
+      setActionError('Failed to pause billing')
+      console.error('pauseBilling error:', result.error)
+    }
+    setIsProcessing(false)
+  }
+
+  const handleResumeBilling = async () => {
+    if (isProcessing) return
+    setIsProcessing(true)
+    setActionError(null)
+
+    const result = await resumeBilling(admission.id)
+    if (result.success) {
+      console.log('✅ Billing resumed for', patient.first_name, patient.last_name)
+      onRefresh?.()
+    } else {
+      setActionError('Failed to resume billing')
+      console.error('resumeBilling error:', result.error)
+    }
+    setIsProcessing(false)
+  }
+
+  const handleDeletePatient = async () => {
+    const confirmed = window.confirm(
+      `Archive patient "${patient.first_name} ${patient.last_name}"?\n\nThis removes them from active list but preserves records.`
+    )
+    if (!confirmed) return
+
+    if (isProcessing) return
+    setIsProcessing(true)
+    setActionError(null)
+
+    try {
+      await deleteAdmission(admission.id)
+      console.log('✅ Patient archived:', patient.first_name, patient.last_name)
+      onRefresh?.()
+    } catch (error) {
+      setActionError('Failed to delete patient')
+      console.error('deleteAdmission error:', error)
+    }
+    setIsProcessing(false)
+  }
+
   const accentColor = hospital?.color || '#3B82F6'
 
   return (
@@ -308,9 +381,16 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
           {/* BILLING BREAKDOWN ───────────────────────────────────────────────── */}
           <section>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
-                Billing Breakdown
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
+                  Billing Breakdown
+                </p>
+                {admission.billing_paused && (
+                  <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold rounded">
+                    PAUSED
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1.5">
                 {isActive && <span className="w-1.5 h-1.5 rounded-full bg-ios-green animate-pulse" />}
                 <span className="text-[13px] font-bold tabular-nums text-gray-900 dark:text-gray-50">
@@ -421,22 +501,35 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
       {/* ── ACTION BUTTONS ──────────────────────────────────────────────────── */}
       {isActive && (
-        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-white/20">
-          <ActionButton icon={ArrowRight} label="Transfer"    color="orange" onClick={() => onTransfer?.(admission)} />
-          <ActionButton icon={Receipt}    label="Invoice"     color="purple" onClick={() => onInvoice?.(admission)} />
-          <ActionButton icon={FileText}   label="Add Note"    color="blue"   onClick={() => onAddNotes?.(admission)} />
-          <ActionButton icon={Plus}       label="Add Service" color="blue"   onClick={() => onAddServices?.(admission, loadServices)} />
-          <ActionButton icon={LogOut}     label="Discharge"   color="green"  loading={discharging} onClick={handleDischarge} />
-          {user?.role === 'admin' && (
-            <ActionButton icon={Trash2}   label="Delete"    color="red"    loading={deleting} onClick={handleDelete} />
+        <div className="space-y-2 mt-3 pt-3 border-t border-white/20">
+          {actionError && (
+            <p className="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+              {actionError}
+            </p>
           )}
+          <div className="grid grid-cols-2 gap-2">
+            <ActionButton icon={ArrowRight} label="Transfer"    color="blue"   onClick={() => onTransfer?.(admission)} disabled={isProcessing} />
+            <ActionButton icon={Receipt}    label="Invoice"     color="blue"   onClick={() => onInvoice?.(admission)} disabled={isProcessing} />
+            <ActionButton icon={FileText}   label="Add Note"    color="blue"   onClick={() => onAddNotes?.(admission)} disabled={isProcessing} />
+            <ActionButton icon={Plus}       label="Service"     color="blue"   onClick={() => onAddServices?.(admission, loadServices)} disabled={isProcessing} />
+            
+            {/* TASK 3: Pause / Resume Button */}
+            {admission.billing_paused ? (
+              <ActionButton icon={LogOut}   label="Resume"      color="green"  loading={isProcessing} onClick={handleResumeBilling} />
+            ) : (
+              <ActionButton icon={LogOut}   label="Pause"       color="orange" loading={isProcessing} onClick={handlePauseBilling} />
+            )}
+            
+            {/* TASK 4: Delete Button */}
+            <ActionButton icon={Trash2}    label="Delete"      color="red"    loading={isProcessing} onClick={handleDeletePatient} />
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-function ActionButton({ icon: Icon, label, color, onClick, loading }) {
+function ActionButton({ icon: Icon, label, color, onClick, loading, disabled }) {
   const cm = {
     blue:   'text-ios-blue hover:bg-ios-blue/10',
     orange: 'text-ios-orange hover:bg-ios-orange/10',
@@ -447,8 +540,8 @@ function ActionButton({ icon: Icon, label, color, onClick, loading }) {
   return (
     <button
       onClick={onClick}
-      disabled={loading}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium
+      disabled={loading || disabled}
+      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium
                   transition-all active:scale-95 disabled:opacity-50 ${cm[color]}`}
     >
       <Icon size={13} />
