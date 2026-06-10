@@ -10,7 +10,6 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/patients', icon: Users, label: 'Patients' },
   { to: '/admit', icon: UserPlus, label: 'Admit' },
-  { to: '/analytics', icon: BarChart2, label: 'Analytics' },
 ]
 
 export default function Sidebar() {
@@ -35,22 +34,17 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Mobile toggle button */}
-      <button
-        onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-4 left-4 z-50 md:hidden p-2.5 glass rounded-2xl shadow-ios-card"
-      >
-        {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-      </button>
 
       {/* Sidebar panel */}
       <aside
         className={`
           fixed md:relative z-40 md:z-auto
-          flex flex-col h-full
-          glass border-r border-white/20
+          flex flex-col h-full md:h-[calc(100vh-1.5rem)]
+          rounded-3xl
+          glass border border-white/30
+          shadow-xl
           transition-all duration-300 ease-in-out
-          ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-[120%] md:translate-x-0'}
           ${collapsed ? 'md:w-[72px]' : 'md:w-56'}
           w-64
         `}
@@ -61,11 +55,17 @@ export default function Sidebar() {
             <span className="text-white font-bold">W</span>
           </div>
           {!collapsed && (
-            <div className="md:block">
+            <div className="flex-1 md:block">
               <p className="font-bold text-sm leading-tight">WardRounds</p>
               <p className="text-xs text-ios-gray-1 leading-tight">Clinical Tracker</p>
             </div>
           )}
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden p-1.5 rounded-xl hover:bg-black/5 transition-colors ml-auto"
+          >
+            <X size={16} className="text-ios-gray-1" />
+          </button>
         </div>
 
         {/* Nav links */}
@@ -115,6 +115,13 @@ export default function Sidebar() {
               {userExpanded && (
                 <div className="mt-1 space-y-0.5 pl-3">
                   <button
+                    onClick={() => { navigate('/analytics'); setMobileOpen(false); setUserExpanded(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                  >
+                    <BarChart2 size={13} className="flex-shrink-0" />
+                    Analytics
+                  </button>
+                  <button
                     onClick={() => { navigate('/settings'); setMobileOpen(false); setUserExpanded(false) }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
                   >
@@ -135,6 +142,13 @@ export default function Sidebar() {
 
           {collapsed && (
             <>
+              <button
+                onClick={() => navigate('/analytics')}
+                className="hidden md:flex w-full items-center justify-center px-2 py-2.5 rounded-2xl text-sm text-ios-gray-1 hover:bg-black/5 transition-all"
+                title="Analytics"
+              >
+                <BarChart2 size={18} />
+              </button>
               <button
                 onClick={() => navigate('/settings')}
                 className="hidden md:flex w-full items-center justify-center px-2 py-2.5 rounded-2xl text-sm text-ios-gray-1 hover:bg-black/5 transition-all"

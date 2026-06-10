@@ -11,8 +11,8 @@ const tabs = [
 
 export default function TabNavigation() {
   return (
-    <nav className="md:hidden sticky bottom-0 z-30 glass border-t border-white/20 safe-bottom">
-      <div className="flex">
+    <nav className="md:hidden fixed bottom-4 left-4 right-4 z-30">
+      <div className="flex glass border border-white/30 shadow-xl rounded-2xl px-2 py-2">
         {tabs.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}

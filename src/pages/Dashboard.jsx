@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserPlus, RefreshCw, BedDouble } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { fetchActiveAdmissions } from '../lib/api'
+import { fetchActiveAdmissions, fetchTeamDetails } from '../lib/api'
 import { supabase } from '../lib/supabaseClient'
 import TopHeader from '../components/TopHeader'
 import PatientCard from '../components/PatientCard'
@@ -47,6 +47,9 @@ export default function Dashboard() {
     try { return new Set(JSON.parse(localStorage.getItem(lsKey) || '[]')) } catch { return new Set() }
   })
   const [invoiceAdmission, setInvoiceAdmission] = useState(null)
+  const [teamDetails, setTeamDetails] = useState(null)
+  const [statsCollapsed, setStatsCollapsed] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
 
   const load = useCallback(async () => {
     if (!user?.team_id) return
@@ -84,6 +87,20 @@ export default function Dashboard() {
     localStorage.setItem(lsKey, JSON.stringify([...visitedHospitals]))
   }, [visitedHospitals, lsKey])
 
+  useEffect(() => {
+    if (!user?.team_id) return
+    const fetchDetails = () =>
+      fetchTeamDetails(user.team_id).then(setTeamDetails).catch(console.error)
+    fetchDetails()
+    window.addEventListener('focus', fetchDetails)
+    return () => window.removeEventListener('focus', fetchDetails)
+  }, [user?.team_id])
+
+  useEffect(() => {
+    const id = setInterval(() => setCurrentTime(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   function handleRefresh() {
     setRefreshing(true)
     load()
@@ -116,15 +133,83 @@ export default function Dashboard() {
       <TopHeader title="Dashboard" />
 
       <div className="p-4 space-y-4">
-        {/* Stats strip */}
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard label="Admitted" value={admissions.filter(a => a.status === 'admitted').length} color="green" />
-          <StatCard label="Transferred" value={admissions.filter(a => a.status === 'transferred').length} color="orange" />
-          <StatCard label="Today" value={admissions.filter(a => {
-            const d = new Date(a.admission_date)
-            const now = new Date()
-            return d.toDateString() === now.toDateString()
-          }).length} color="blue" />
+        {/* Stats Section — collapsible */}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          {/* Collapsed bar — always visible, acts as toggle */}
+          <button
+            onClick={() => setStatsCollapsed(prev => !prev)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-black/[0.02] transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              {teamDetails?.logo_url ? (
+                <img src={teamDetails.logo_url} alt="Logo" className="w-7 h-7 rounded-lg object-cover" />
+              ) : (
+                <div className="w-7 h-7 rounded-lg bg-ios-blue flex items-center justify-center text-white text-xs font-bold">
+                  {(teamDetails?.practice_name || 'W').charAt(0)}
+                </div>
+              )}
+              <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">
+                {teamDetails?.practice_name || 'WardRounds'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-ios-gray-1">
+                {currentTime.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {' · '}
+                {currentTime.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <svg
+                className={`w-4 h-4 text-ios-gray-1 transition-transform duration-200 ${statsCollapsed ? '' : 'rotate-180'}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
+
+          {/* Expanded hospital stat cards */}
+          <div className={`transition-all duration-300 overflow-hidden ${statsCollapsed ? 'max-h-0' : 'max-h-[200px]'}`}>
+            <div className="flex gap-3 overflow-x-auto px-4 pb-4">
+              {/* All Hospitals summary card */}
+              <div className="flex-shrink-0 rounded-xl px-4 py-3 min-w-[130px] bg-gray-100/80 dark:bg-white/10 border border-gray-200/50 dark:border-white/10">
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">All Hospitals</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{admissions.filter(a => a.status === 'admitted').length}</p>
+                <p className="text-[11px] text-ios-gray-1 mt-0.5">
+                  {todayTotal > 0 ? `+${todayTotal} today` : 'patients'}
+                </p>
+              </div>
+
+              {/* Per-hospital cards */}
+              {hospitals.map(h => {
+                const color = h.color || '#3B82F6'
+                const hospitalAdmissions = admissions.filter(a => a.hospitals?.id === h.id && a.status === 'admitted')
+                const newToday = todayCountByHospital[h.id] || 0
+                return (
+                  <button
+                    key={h.id}
+                    onClick={() => {
+                      setSelectedHospitalId(prev => prev === h.id ? null : h.id)
+                      setVisitedHospitals(prev => new Set([...prev, h.id]))
+                    }}
+                    className="flex-shrink-0 rounded-xl px-4 py-3 min-w-[130px] text-left border transition-all"
+                    style={{
+                      backgroundColor: `${color}15`,
+                      borderColor: selectedHospitalId === h.id ? color : `${color}40`,
+                      boxShadow: selectedHospitalId === h.id ? `0 0 0 2px ${color}60` : 'none'
+                    }}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wide mb-1 truncate" style={{ color }}>
+                      {h.name}
+                    </p>
+                    <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{hospitalAdmissions.length}</p>
+                    <p className="text-[11px] text-ios-gray-1 mt-0.5">
+                      {newToday > 0 ? `+${newToday} new today` : 'patients'}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Header row */}
@@ -309,16 +394,3 @@ export default function Dashboard() {
   )
 }
 
-function StatCard({ label, value, color }) {
-  const colors = {
-    green: 'text-ios-green',
-    orange: 'text-ios-orange',
-    blue: 'text-ios-blue',
-  }
-  return (
-    <div className="glass-card py-3 px-3 text-center">
-      <p className={`text-2xl font-bold ${colors[color]}`}>{value}</p>
-      <p className="text-xs text-ios-gray-1 mt-0.5">{label}</p>
-    </div>
-  )
-}

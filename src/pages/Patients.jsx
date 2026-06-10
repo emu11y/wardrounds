@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, ChevronDown, ChevronUp, UserPlus, Clock, MapPin, Shield, RotateCcw } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, UserPlus, Clock, MapPin, RotateCcw, Receipt, FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { fetchPatients, fetchAdmissionsForPatient, createAdmission } from '../lib/api'
+import { fetchPatients, fetchAdmissionsForPatient, createAdmission, fetchBillingRecords, fetchAdmissionServices } from '../lib/api'
 import { getStatusBadgeStyle } from '../lib/statusBadges'
 import TopHeader from '../components/TopHeader'
+import InvoiceModal from './modals/InvoiceModal'
+import * as XLSX from 'xlsx'
 
 function calcAge(dob) {
   if (!dob) return null
@@ -29,6 +31,14 @@ export default function Patients() {
   const [expandedId, setExpandedId] = useState(null)
   const [admissionsMap, setAdmissionsMap] = useState({})
   const [loadingAdmissions, setLoadingAdmissions] = useState({})
+  const [expandedAdmissionId, setExpandedAdmissionId] = useState(null)
+  const [billingMap, setBillingMap] = useState({})
+  const [servicesMap, setServicesMap] = useState({})
+  const [loadingBilling, setLoadingBilling] = useState({})
+  const [invoiceAdmission, setInvoiceAdmission] = useState(null)
+  const [timeFilter, setTimeFilter] = useState(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const load = useCallback(async () => {
     if (!user?.team_id) return
@@ -63,6 +73,29 @@ export default function Patients() {
     }
   }
 
+  async function toggleAdmissionExpand(admissionId) {
+    if (expandedAdmissionId === admissionId) {
+      setExpandedAdmissionId(null)
+      return
+    }
+    setExpandedAdmissionId(admissionId)
+    if (!billingMap[admissionId]) {
+      setLoadingBilling(prev => ({ ...prev, [admissionId]: true }))
+      try {
+        const [records, services] = await Promise.all([
+          fetchBillingRecords(admissionId),
+          fetchAdmissionServices(admissionId)
+        ])
+        setBillingMap(prev => ({ ...prev, [admissionId]: records || [] }))
+        setServicesMap(prev => ({ ...prev, [admissionId]: services || [] }))
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoadingBilling(prev => ({ ...prev, [admissionId]: false }))
+      }
+    }
+  }
+
   async function handleReadmit(patient) {
     if (!confirm(`Re-admit ${patient.first_name} ${patient.last_name}?`)) return
     try {
@@ -79,9 +112,48 @@ export default function Patients() {
     }
   }
 
+  function getTimeFilterCutoff(filter) {
+    if (!filter) return null
+    const now = new Date()
+    const map = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }
+    const days = map[filter]
+    if (!days) return null
+    const d = new Date(now)
+    d.setDate(d.getDate() - days)
+    return d
+  }
+
+  function handleExport() {
+    const rows = filtered.map(p => ({
+      'First Name': p.first_name,
+      'Last Name': p.last_name,
+      'Age': calcAge(p.date_of_birth) ?? '',
+      'Date of Birth': p.date_of_birth ? formatDate(p.date_of_birth) : '',
+      'Insurance': p.insurance_name || '',
+      'Added': formatDate(p.created_at),
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Patients')
+    const dateStr = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `wardrounds-patients-${dateStr}.xlsx`)
+  }
+
   const filtered = patients.filter(p => {
     const name = `${p.first_name} ${p.last_name}`.toLowerCase()
-    return name.includes(query.toLowerCase())
+    if (!name.includes(query.toLowerCase())) return false
+
+    const cutoff = getTimeFilterCutoff(timeFilter)
+    if (cutoff && new Date(p.created_at) < cutoff) return false
+
+    if (dateFrom && new Date(p.created_at) < new Date(dateFrom)) return false
+    if (dateTo) {
+      const to = new Date(dateTo)
+      to.setHours(23, 59, 59, 999)
+      if (new Date(p.created_at) > to) return false
+    }
+
+    return true
   })
 
   return (
@@ -89,7 +161,7 @@ export default function Patients() {
       <TopHeader title="Patients" />
 
       <div className="p-4 space-y-4">
-        {/* Search + filter */}
+        {/* Search + status filter */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ios-gray-1" />
@@ -112,8 +184,59 @@ export default function Patients() {
           </select>
         </div>
 
-        {/* Count */}
-        <p className="text-xs text-ios-gray-1">{filtered.length} patient{filtered.length !== 1 ? 's' : ''}</p>
+        {/* Time filter tabs */}
+        <div className="glass-card p-3 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {[null, '1W', '1M', '3M', '6M', '1Y'].map(f => (
+              <button
+                key={f ?? 'all'}
+                onClick={() => { setTimeFilter(f); setDateFrom(''); setDateTo('') }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                  timeFilter === f && !dateFrom && !dateTo
+                    ? 'bg-ios-blue text-white'
+                    : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
+                }`}
+              >
+                {f ?? 'All Time'}
+              </button>
+            ))}
+          </div>
+
+          {/* Date range */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => { setDateFrom(e.target.value); setTimeFilter(null) }}
+              className="ios-input flex-1 text-xs py-1.5"
+            />
+            <span className="text-xs text-ios-gray-1">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => { setDateTo(e.target.value); setTimeFilter(null) }}
+              className="ios-input flex-1 text-xs py-1.5"
+            />
+          </div>
+        </div>
+
+        {/* Count + export */}
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-ios-gray-1">
+            {filtered.length} patient{filtered.length !== 1 ? 's' : ''}
+            {(timeFilter || dateFrom || dateTo) ? ' in selected period' : ''}
+          </p>
+          <button
+            onClick={handleExport}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-ios-green hover:opacity-90 transition-opacity shadow-sm disabled:opacity-40"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            Export
+          </button>
+        </div>
 
         {/* List */}
         {loading ? (
@@ -179,49 +302,128 @@ export default function Patients() {
                       ) : admissions.length === 0 ? (
                         <p className="text-sm text-ios-gray-1 text-center py-2">No admission history</p>
                       ) : (
-                        admissions.map(adm => (
-                          <div key={adm.id} className="bg-white/40 dark:bg-white/5 rounded-2xl p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              {(() => {
-                                const s = getStatusBadgeStyle(adm.status)
-                                return (
-                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${s.className}`}>
-                                    {s.icon} {s.text}
-                                  </span>
-                                )
-                              })()}
-                              <span className="text-xs text-ios-gray-1 flex items-center gap-1">
-                                <Clock size={10} /> {formatDate(adm.admission_date)}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap gap-2 text-xs text-ios-gray-1">
-                              {adm.hospitals?.name && (
-                                <span className="flex items-center gap-1"><MapPin size={10} />{adm.hospitals.name}</span>
-                              )}
-                              {adm.ward && <span>Ward {adm.ward}</span>}
-                              {adm.discharge_date && (
-                                <span className="flex items-center gap-1">
-                                  Discharged: {formatDate(adm.discharge_date)}
-                                </span>
-                              )}
-                            </div>
-                            {adm.patient_notes?.length > 0 && (
-                              <p className="text-xs text-ios-gray-1">{adm.patient_notes.length} note{adm.patient_notes.length > 1 ? 's' : ''}</p>
-                            )}
-                          </div>
-                        ))
-                      )}
+                        admissions.map(adm => {
+                          const color = adm.hospitals?.color || '#3B82F6'
+                          const isAdmExpanded = expandedAdmissionId === adm.id
+                          const billing = billingMap[adm.id] || []
+                          const services = servicesMap[adm.id] || []
+                          const wardTotal = billing.reduce((s, r) => s + Number(r.amount || 0), 0)
+                          const servicesTotal = services.reduce((s, r) => s + Number(r.price || 0), 0)
+                          const grandTotal = wardTotal + servicesTotal
+                          const isActive = adm.status === 'admitted'
+                          const s = getStatusBadgeStyle(adm.status)
 
-                      {/* Re-admit button for discharged patients */}
-                      {latest?.status === 'discharged' && (
-                        <button
-                          onClick={() => handleReadmit(patient)}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm
-                                     font-medium text-ios-blue bg-ios-blue/10 hover:bg-ios-blue/20 transition-all"
-                        >
-                          <RotateCcw size={14} />
-                          Re-admit Patient
-                        </button>
+                          return (
+                            <div
+                              key={adm.id}
+                              className="rounded-2xl overflow-hidden border"
+                              style={{ borderColor: color + '40', backgroundColor: color + '08' }}
+                            >
+                              {/* Admission header row */}
+                              <button
+                                className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                                onClick={() => toggleAdmissionExpand(adm.id)}
+                              >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <div
+                                    className="w-1 h-8 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-[12px] font-semibold text-gray-800 truncate">
+                                      {adm.hospitals?.name || 'Unknown Hospital'}
+                                    </p>
+                                    <p className="text-[10px] text-ios-gray-1">
+                                      {formatDate(adm.team_start_date || adm.admission_date)}
+                                      {adm.discharge_date ? ` → ${formatDate(adm.discharge_date)}` : isActive ? ' → Present' : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {adm.ward && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white"
+                                      style={{ backgroundColor: adm.ward === 'ICU' ? '#ef4444' : adm.ward === 'HDU' ? '#f97316' : '#22c55e' }}>
+                                      {adm.ward}
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${s.className}`}>
+                                    {s.text}
+                                  </span>
+                                  {grandTotal > 0 && (
+                                    <span className="text-[11px] font-bold text-gray-700">
+                                      KES {Math.round(grandTotal).toLocaleString()}
+                                    </span>
+                                  )}
+                                  <ChevronDown
+                                    size={13}
+                                    className={`text-ios-gray-1 transition-transform duration-200 ${isAdmExpanded ? 'rotate-180' : ''}`}
+                                  />
+                                </div>
+                              </button>
+
+                              {/* Expanded billing + actions */}
+                              {isAdmExpanded && (
+                                <div className="px-3 pb-3 space-y-2 border-t" style={{ borderColor: color + '30' }}>
+                                  {loadingBilling[adm.id] ? (
+                                    <div className="h-8 bg-ios-gray-5 rounded animate-pulse mt-2" />
+                                  ) : (
+                                    <div className="mt-2 rounded-xl p-3 space-y-1.5" style={{ backgroundColor: color + '10' }}>
+                                      <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">
+                                        Billing Breakdown
+                                      </p>
+                                      {billing.length === 0 && services.length === 0 ? (
+                                        <p className="text-[11px] text-ios-gray-2">No billing records</p>
+                                      ) : (
+                                        <>
+                                          {billing.length > 0 && (
+                                            <div className="flex justify-between items-center py-1">
+                                              <span className="text-[11px] text-gray-700">Ward charges</span>
+                                              <span className="text-[11px] font-bold text-ios-blue">
+                                                KES {Math.round(wardTotal).toLocaleString()}
+                                              </span>
+                                            </div>
+                                          )}
+                                          {services.map(svc => (
+                                            <div key={svc.id} className="flex justify-between items-center py-0.5">
+                                              <span className="text-[11px] text-gray-700 truncate flex-1">{svc.service_name}</span>
+                                              <span className="text-[11px] font-semibold text-ios-blue ml-2">
+                                                KES {Math.round(Number(svc.price)).toLocaleString()}
+                                              </span>
+                                            </div>
+                                          ))}
+                                          <div className="flex justify-between items-center pt-1.5 border-t" style={{ borderColor: color + '30' }}>
+                                            <span className="text-[11px] font-bold text-gray-800">Total</span>
+                                            <span className="text-[12px] font-bold text-gray-900">
+                                              KES {Math.round(grandTotal).toLocaleString()}
+                                            </span>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Action buttons */}
+                                  <div className="flex gap-2 pt-1">
+                                    <button
+                                      onClick={() => setInvoiceAdmission(adm)}
+                                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-ios-blue bg-blue-50 hover:bg-blue-100 transition-colors"
+                                    >
+                                      <Receipt size={12} /> Invoice
+                                    </button>
+                                    {(adm.status === 'discharged' || adm.status === 'archived') && (
+                                      <button
+                                        onClick={() => handleReadmit(patient)}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-ios-green bg-green-50 hover:bg-green-100 transition-colors"
+                                      >
+                                        <RotateCcw size={12} /> Re-admit
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })
                       )}
                     </div>
                   )}
@@ -231,6 +433,13 @@ export default function Patients() {
           </div>
         )}
       </div>
+
+      {invoiceAdmission && (
+        <InvoiceModal
+          admission={invoiceAdmission}
+          onClose={() => setInvoiceAdmission(null)}
+        />
+      )}
     </div>
   )
 }

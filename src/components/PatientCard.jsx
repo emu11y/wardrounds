@@ -113,6 +113,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
   const [admissionServices, setAdmissionServices] = useState([])
   const [notesExpanded, setNotesExpanded] = useState(false)
+  const [stayExpanded, setStayExpanded] = useState(false)
 
   const loadServices = () =>
     fetchAdmissionServices(admission.id)
@@ -122,6 +123,13 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
       .catch(console.error)
 
   useEffect(() => { loadServices() }, [admission.id])
+
+  useEffect(() => {
+    if (!isExpanded) {
+      setStayExpanded(false)
+      setNotesExpanded(false)
+    }
+  }, [isExpanded])
 
   const admissionServicesTotal = admissionServices.reduce((s, svc) => s + Number(svc.price), 0)
 
@@ -278,8 +286,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
   return (
     <div
-      className="glass-card hover:shadow-glass-md transition-shadow duration-200 border-l-4"
-      style={{ borderLeftColor: accentColor }}
+      className="glass-card hover:shadow-glass-md transition-shadow duration-200"
     >
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
@@ -291,6 +298,10 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
         {/* Left: identity */}
         <div className="flex items-start gap-3 min-w-0">
+          <div
+            className="w-1 h-10 rounded-full flex-shrink-0 self-stretch"
+            style={{ backgroundColor: accentColor }}
+          />
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ios-blue to-ios-purple flex items-center justify-center flex-shrink-0">
             <span className="text-xs font-bold text-white">{patient?.first_name?.[0]}{patient?.last_name?.[0]}</span>
           </div>
@@ -336,58 +347,75 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
         <div className="space-y-4 pt-2 pb-3">
 
           {/* STAY TIMELINE ──────────────────────────────────────────────────── */}
-          <section>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2.5">
-              Stay Timeline
-            </p>
-            {wardLines.length > 0 ? (
-              <>
-                {wardLines.map((line, i) => (
-                  <div key={`wardline-${i}`} className="flex gap-3">
-                    <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
-                      {/* Event dot */}
-                      <div
-                        className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white"
-                        style={{ backgroundColor: wardColor(line.ward) }}
-                      />
-                      {/* Connector to next event or Active */}
-                      {(i < wardLines.length - 1 || isActive) && (
-                        <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '2rem' }} />
-                      )}
-                    </div>
-                    <div className={`flex-1 ${(i < wardLines.length - 1 || isActive) ? 'pb-2' : ''}`}>
-                      <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">
-                        {line.label}
-                      </p>
-                      {line.rate > 0 ? (
-                        <p className="text-[11px] text-ios-gray-1 mt-0.5">
-                          {line.days}d · KES {Math.round(line.rate).toLocaleString()}/day
-                          {line.isCurrent && isActive && (
-                            <span className="ml-1.5 text-ios-green font-medium">(current)</span>
+          <section
+            className="rounded-2xl border"
+            style={{ backgroundColor: accentColor + '08', borderColor: accentColor + '40' }}
+          >
+            <button
+              onClick={() => setStayExpanded(prev => !prev)}
+              className="flex items-center gap-1.5 w-full text-left p-3"
+            >
+              <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 flex-1">
+                Stay Timeline
+              </span>
+              <ChevronDown
+                size={13}
+                className={`text-ios-gray-1 transition-transform duration-200 ${stayExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {stayExpanded && (
+              <div className="px-3 pb-3 border-t" style={{ borderColor: accentColor + '30' }}>
+                {wardLines.length > 0 ? (
+                  <>
+                    {wardLines.map((line, i) => (
+                      <div key={`wardline-${i}`} className="flex gap-3 pt-3">
+                        <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                          <div
+                            className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white"
+                            style={{ backgroundColor: wardColor(line.ward) }}
+                          />
+                          {(i < wardLines.length - 1 || isActive) && (
+                            <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '2rem' }} />
                           )}
+                        </div>
+                        <div className={`flex-1 ${(i < wardLines.length - 1 || isActive) ? 'pb-2' : ''}`}>
+                          <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">
+                            {line.label}
+                          </p>
+                          {line.rate > 0 ? (
+                            <p className="text-[11px] text-ios-gray-1 mt-0.5">
+                              {line.days}d · KES {Math.round(line.rate).toLocaleString()}/day
+                              {line.isCurrent && isActive && (
+                                <span className="ml-1.5 text-ios-green font-medium">(current)</span>
+                              )}
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-ios-gray-2 mt-0.5">Rate not configured</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {isActive && (
+                      <div className="flex gap-3 pt-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-ios-green animate-pulse flex-shrink-0 mt-0.5" />
+                        <p className="text-[12px] font-semibold text-ios-green">
+                          Active · {days} day{days !== 1 ? 's' : ''} total
                         </p>
-                      ) : (
-                        <p className="text-[11px] text-ios-gray-2 mt-0.5">Rate not configured</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {isActive && (
-                  <div className="flex gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-ios-green animate-pulse flex-shrink-0 mt-0.5" />
-                    <p className="text-[12px] font-semibold text-ios-green">
-                      Active · {days} day{days !== 1 ? 's' : ''} total
-                    </p>
-                  </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px] text-ios-gray-2 pt-3">No stay data yet</p>
                 )}
-              </>
-            ) : (
-              <p className="text-[11px] text-ios-gray-2">No stay data yet</p>
+              </div>
             )}
           </section>
 
           {/* BILLING BREAKDOWN ───────────────────────────────────────────────── */}
-          <section>
+          <section
+            className="rounded-2xl p-3 border"
+            style={{ backgroundColor: accentColor + '08', borderColor: accentColor + '40' }}
+          >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
@@ -407,16 +435,16 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
               </div>
             </div>
 
-            <div className="bg-gray-100/60 dark:bg-white/5 backdrop-blur-sm rounded-xl p-4 space-y-1.5">
+            <div className="bg-white/80 dark:bg-white/10 backdrop-blur-sm rounded-xl p-4 space-y-1.5">
               {billingBreakdown.length === 0 ? (
                 <p className="text-[11px] text-ios-gray-2 py-1">No billing records yet</p>
               ) : billingBreakdown.map((row, i) => row.type === 'ward' ? (
                 <div
                   key={`ward-${i}`}
-                  className="flex items-center justify-between pl-3 py-1.5 rounded-lg"
-                  style={{ borderLeft: `3px solid ${wardColor(row.name)}` }}
+                  className="flex items-center gap-2 justify-between py-1.5 rounded-lg"
                 >
-                  <div className="min-w-0">
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: wardColor(row.name) }} />
+                  <div className="min-w-0 flex-1">
                     <span className="text-[12px] font-bold text-gray-800 dark:text-gray-100">{row.name}</span>
                     <span className="text-[11px] text-ios-gray-1 ml-1.5">
                       {row.days}d @ KES {Math.round(row.rate).toLocaleString()}/day
@@ -429,9 +457,9 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
               ) : (
                 <div
                   key={`svc-${row.id}`}
-                  className="flex items-center justify-between pl-3 py-1.5 rounded-lg"
-                  style={{ borderLeft: '3px solid #a855f7' }}
+                  className="flex items-center gap-2 justify-between py-1.5 rounded-lg"
                 >
+                  <div className="w-2 h-2 rounded-full flex-shrink-0 bg-purple-400" />
                   <div className="min-w-0 flex-1">
                     <span className="text-[12px] font-semibold text-gray-800 dark:text-gray-100">{row.name}</span>
                     {row.billingType && (
@@ -468,12 +496,14 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
           {/* NOTES ─────────────────────────────────────────────────────────── */}
           {notes.length > 0 && (
-            <section>
+            <section
+              className="rounded-2xl border"
+              style={{ backgroundColor: accentColor + '08', borderColor: accentColor + '40' }}
+            >
               <button
                 onClick={() => setNotesExpanded(prev => !prev)}
-                className="flex items-center gap-1.5 w-full text-left"
+                className="flex items-center gap-1.5 w-full text-left p-3"
               >
-                <FileText size={12} className="text-ios-blue flex-shrink-0" />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 flex-1">
                   Notes ({notes.length})
                 </span>
@@ -484,26 +514,28 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
               </button>
 
               {notesExpanded && (
-                <div className="mt-2.5 bg-gray-100/60 dark:bg-white/5 backdrop-blur-sm rounded-xl p-4">
-                  {notes.map((note, i) => (
-                    <div key={note.id} className="flex gap-2.5">
-                      <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
-                        <div className="w-2 h-2 rounded-full border-[1.5px] border-ios-blue bg-white dark:bg-ios-blue flex-shrink-0" />
-                        {i < notes.length - 1 && (
-                          <div className="w-px flex-1 bg-ios-gray-4 my-1" style={{ minHeight: '1.5rem' }} />
-                        )}
+                <div className="px-3 pb-3 border-t" style={{ borderColor: accentColor + '30' }}>
+                  <div className="pt-3 space-y-0">
+                    {notes.map((note, i) => (
+                      <div key={note.id} className="flex gap-2.5">
+                        <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                          <div className="w-2 h-2 rounded-full border-[1.5px] border-ios-blue bg-white dark:bg-ios-blue flex-shrink-0" />
+                          {i < notes.length - 1 && (
+                            <div className="w-px flex-1 bg-ios-gray-4 my-1" style={{ minHeight: '1.5rem' }} />
+                          )}
+                        </div>
+                        <div className={`flex-1 ${i < notes.length - 1 ? 'pb-3' : ''}`}>
+                          <p className="text-[11px] font-semibold text-ios-gray-1 leading-tight">
+                            {note.signature || note.users?.full_name || 'Unknown'}
+                            <span className="font-normal"> — {fmtNoteDate(note.created_at)}</span>
+                          </p>
+                          <p className="text-[13px] mt-1 leading-snug text-gray-800 dark:text-gray-100 whitespace-pre-wrap">
+                            "{note.note_text}"
+                          </p>
+                        </div>
                       </div>
-                      <div className={`flex-1 ${i < notes.length - 1 ? 'pb-3' : ''}`}>
-                        <p className="text-[11px] font-semibold text-ios-gray-1 leading-tight">
-                          {note.signature || note.users?.full_name || 'Unknown'}
-                          <span className="font-normal"> — {fmtNoteDate(note.created_at)}</span>
-                        </p>
-                        <p className="text-[13px] mt-1 leading-snug text-gray-800 dark:text-gray-100 whitespace-pre-wrap">
-                          "{note.note_text}"
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </section>

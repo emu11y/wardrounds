@@ -471,7 +471,17 @@ export async function updateTeam(teamId, updates) {
     .update(updates)
     .eq('id', teamId)
     .select()
-    .single()
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function fetchTeamDetails(teamId) {
+  const { data, error } = await supabase
+    .from('teams')
+    .select('id, name, practice_name, logo_url')
+    .eq('id', teamId)
+    .maybeSingle()
   if (error) throw error
   return data
 }
@@ -481,7 +491,7 @@ export async function fetchTeamProfile(teamId) {
     .from('teams')
     .select('id, practice_name, doctor_name, doctor_title, address, phone, email, logo_url')
     .eq('id', teamId)
-    .single()
+    .maybeSingle()
   if (error) throw error
   return data
 }
@@ -492,7 +502,7 @@ export async function saveTeamProfile(teamId, updates) {
     .update(updates)
     .eq('id', teamId)
     .select()
-    .single()
+    .maybeSingle()
   if (error) throw error
   return data
 }
