@@ -67,7 +67,7 @@ function buildWardLines(admission) {
     const rate = Number(svc?.price_per_day ?? 0)
     return {
       ward,
-      label: ev.event_type === 'admitted' ? `Admitted · ${fmtShort(from)}` : `Transferred · ${fmtShort(from)}`,
+      label: ev.event_type === 'admitted' ? `Admitted to ${ward} · ${fmtShort(from)}` : `Transferred to ${ward} · ${fmtShort(from)}`,
       date: new Date(from),
       days,
       rate,
@@ -129,23 +129,50 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     load()
   }, [admission.id])
 
-  const wardTotal  = billingRecords.reduce((s, r) => s + Number(r.amount), 0)
-  const grandTotal = wardTotal + admissionServicesTotal
-
   const age     = calcAge(patient?.date_of_birth)
   const days    = Math.max(0, daysSince(admission.team_start_date || admission.admission_date))
   const shortId = admission.id.slice(0, 8).toUpperCase()
 
   const billingBreakdown = (() => {
     const items = []
-    if (wardTotal > 0) {
-      items.push({ type: 'ward', name: admission.ward || 'Ward', days, rate: days > 0 ? wardTotal / days : 0, total: wardTotal })
-    }
-    admissionServices.forEach(svc => {
-      items.push({ type: 'service', id: svc.id, name: svc.service_name, total: Number(svc.price || 0), billingType: svc.billing_type || 'one-off' })
+    
+    // Add ward lines with ACTUAL rates from buildWardLines (not back-calculated)
+    // For same-day transfers, only bill the final ward
+    const wardEventsByDate = {}
+    wardLines.forEach(line => {
+      const dateKey = line.date.toDateString()
+      wardEventsByDate[dateKey] = line
     })
+    
+    Object.values(wardEventsByDate).forEach(line => {
+      if (line.rate > 0) {
+        items.push({ 
+          type: 'ward', 
+          name: line.ward, 
+          days: line.days, 
+          rate: line.rate, 
+          total: line.total 
+        })
+      }
+    })
+    
+    // Add services as separate line items
+    admissionServices.forEach(svc => {
+      items.push({ 
+        type: 'service', 
+        id: svc.id, 
+        name: svc.service_name, 
+        total: Number(svc.price || 0), 
+        billingType: svc.billing_type || 'one-off' 
+      })
+    })
+    
     return items
   })()
+
+  // Calculate totals from billingBreakdown (not from database wardTotal)
+  const wardTotal = billingBreakdown.filter(item => item.type === 'ward').reduce((s, item) => s + item.total, 0)
+  const grandTotal = billingBreakdown.reduce((s, item) => s + item.total, 0)
 
   const isActive = admission.status === 'admitted'
 
@@ -186,86 +213,63 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
         {/* Left: identity */}
         <div className="flex items-start gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ios-blue to-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <span className="text-white font-bold text-sm">
-              {patient?.first_name?.[0]}{patient?.last_name?.[0]}
-            </span>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ios-blue to-ios-purple flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-white">{patient?.first_name?.[0]}{patient?.last_name?.[0]}</span>
           </div>
-          <div className="min-w-0">
-            <h3 className="font-bold text-[15px] leading-tight truncate">
-              {patient?.first_name} {patient?.last_name}
-            </h3>
-            <p className="text-[11px] text-ios-gray-1 font-mono mt-0.5">#{shortId}</p>
-            {admission.ward && (
-              <span className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded-md bg-ios-green/12 text-ios-green text-[11px] font-semibold tracking-wide">
-                {admission.ward}
-              </span>
-            )}
+          <div className="flex-1 min-w-0">
+            <p className="text-[15px] font-bold text-gray-900 dark:text-gray-50 truncate">{patient?.first_name} {patient?.last_name}</p>
+            <p className="text-[11px] text-ios-gray-1 mt-0.5">#{shortId}</p>
           </div>
         </div>
 
-        {/* Right: billing summary + chevron */}
-        <div className="flex items-start gap-2 flex-shrink-0">
-          <div className="text-right">
-            {isNew && (
-              <span
-                className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold text-white mb-1"
-                style={{ backgroundColor: accentColor }}
-              >
-                New
-              </span>
-            )}
-            <p className="text-[17px] font-bold tabular-nums text-gray-900 dark:text-gray-50 leading-tight">
-              KES {Math.round(grandTotal).toLocaleString()}
-            </p>
-            <p className="text-[11px] text-ios-gray-1 mt-0.5">{days} day{days !== 1 ? 's' : ''}</p>
+        {/* Right: total + badge */}
+        <div className="text-right flex-shrink-0">
+          <p className="text-[18px] font-bold tabular-nums text-gray-900 dark:text-gray-50">KES {Math.round(grandTotal).toLocaleString()}</p>
+          <div className="flex items-center gap-1 justify-end mt-1">
+            {isNew && <span className="px-2 py-0.5 bg-ios-blue text-white text-[9px] font-bold rounded-full">New</span>}
+            <button
+              onClick={() => onToggleExpand?.(admission.id)}
+              className="p-1 hover:bg-white/20 rounded transition-colors"
+            >
+              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
           </div>
-          <button
-            onClick={onToggleExpand}
-            className="mt-0.5 p-1 text-ios-gray-1 hover:text-gray-600 transition-colors"
-          >
-            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </button>
         </div>
       </div>
 
-      {/* ── STATUS ROW ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 text-[12px]">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-            isActive ? 'bg-ios-green animate-pulse' : 'bg-ios-gray-3'
-          }`} />
-          <span className="font-medium text-gray-700 dark:text-gray-200">
-            {admission.ward || 'Unassigned'}
-            <span className="text-ios-gray-1 font-normal"> • {isActive ? 'Active' : admission.status}</span>
+      {/* Ward + insurance row */}
+      <div className="flex items-center justify-between gap-2 mb-3 px-0.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="px-2 py-1 text-[10px] font-bold rounded-lg text-white" style={{ backgroundColor: wardColor(admission.ward) }}>
+            {admission.ward || 'Ward'}
           </span>
+          <span className="text-[11px] text-ios-gray-1 truncate">{hospital?.name || 'Hospital'}</span>
         </div>
         {patient?.insurance_name && (
-          <span className="flex items-center gap-1 text-[11px] text-ios-gray-1">
-            <Shield size={10} />
-            {patient.insurance_name}
-          </span>
+          <span className="text-[11px] text-ios-gray-2 flex-shrink-0">{patient.insurance_name}</span>
         )}
       </div>
 
-      {/* ── EXPANDED DETAIL ─────────────────────────────────────────────────── */}
-      <div className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[2000px]' : 'max-h-0'}`}>
-        <div className="border-t border-white/20 pt-4 space-y-5">
+      {/* ── EXPANDED CONTENT ────────────────────────────────────────────────── */}
+      <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-[2000px]' : 'max-h-0'}`}>
+        <div className="space-y-4 pt-2 pb-3">
 
           {/* STAY TIMELINE ──────────────────────────────────────────────────── */}
           <section>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2.5">
               Stay Timeline
             </p>
             {wardLines.length > 0 ? (
               <>
                 {wardLines.map((line, i) => (
-                  <div key={i} className="flex gap-3">
-                    <div className="flex flex-col items-center flex-shrink-0">
+                  <div key={`wardline-${i}`} className="flex gap-3">
+                    <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                      {/* Event dot */}
                       <div
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5"
-                        style={{ backgroundColor: line.isCurrent && isActive ? '#34c759' : '#c7c7cc' }}
+                        className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white"
+                        style={{ backgroundColor: wardColor(line.ward) }}
                       />
+                      {/* Connector to next event or Active */}
                       {(i < wardLines.length - 1 || isActive) && (
                         <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '2rem' }} />
                       )}
