@@ -92,8 +92,8 @@ export default function Dashboard() {
   const hospitals = Array.from(
     new Map(
       admissions
-        .filter(a => a.hospitals)
-        .map(a => [a.hospitals.id, { id: a.hospitals.id, name: a.hospitals.name, color: a.hospitals.color }])
+        .filter(a => a.hospitals && a.hospitals.status !== 'inactive')
+        .map(a => [a.hospitals.id, { id: a.hospitals.id, name: a.hospitals.name, color: a.hospitals.color, status: a.hospitals.status }])
     ).values()
   )
 
@@ -241,6 +241,14 @@ export default function Dashboard() {
                 Admit First Patient
               </span>
             </button>
+          </div>
+        ) : filteredAdmissions.length === 0 ? (
+          <div className="glass-card rounded-2xl p-10 text-center">
+            <p className="text-sm text-ios-gray-1">
+              {selectedHospitalId
+                ? `No patients at ${hospitals.find(h => h.id === selectedHospitalId)?.name || 'this hospital'}`
+                : 'No active patients'}
+            </p>
           </div>
         ) : (
           <div className="flex gap-4 items-start">

@@ -112,6 +112,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
   )
 
   const [admissionServices, setAdmissionServices] = useState([])
+  const [notesExpanded, setNotesExpanded] = useState(false)
 
   const loadServices = () =>
     fetchAdmissionServices(admission.id)
@@ -282,7 +283,11 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     >
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div
+        className="-mx-4 -mt-4 px-4 pt-4 pb-3 mb-3 rounded-t-2xl"
+        style={{ backgroundColor: accentColor + '18' }}
+      >
+      <div className="flex items-start justify-between gap-3">
 
         {/* Left: identity */}
         <div className="flex items-start gap-3 min-w-0">
@@ -291,7 +296,9 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[15px] font-bold text-gray-900 dark:text-gray-50 truncate">{patient?.first_name} {patient?.last_name}</p>
-            <p className="text-[11px] text-ios-gray-1 mt-0.5">#{shortId}</p>
+            <p className="text-[11px] text-ios-gray-1 mt-0.5">
+              #{admission.patient_hospital_id || shortId}
+            </p>
           </div>
         </div>
 
@@ -308,6 +315,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
             </button>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Ward + insurance row */}
@@ -459,17 +467,24 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
           </section>
 
           {/* NOTES ─────────────────────────────────────────────────────────── */}
-          <section>
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <FileText size={12} className="text-ios-blue" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">
-                Notes {notes.length > 0 ? `(${notes.length})` : ''}
-              </span>
-            </div>
+          {notes.length > 0 && (
+            <section>
+              <button
+                onClick={() => setNotesExpanded(prev => !prev)}
+                className="flex items-center gap-1.5 w-full text-left"
+              >
+                <FileText size={12} className="text-ios-blue flex-shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 flex-1">
+                  Notes ({notes.length})
+                </span>
+                <ChevronDown
+                  size={13}
+                  className={`text-ios-gray-1 transition-transform duration-200 ${notesExpanded ? 'rotate-180' : ''}`}
+                />
+              </button>
 
-            <div className="bg-gray-100/60 dark:bg-white/5 backdrop-blur-sm rounded-xl p-4">
-              {notes.length > 0 ? (
-                <div>
+              {notesExpanded && (
+                <div className="mt-2.5 bg-gray-100/60 dark:bg-white/5 backdrop-blur-sm rounded-xl p-4">
                   {notes.map((note, i) => (
                     <div key={note.id} className="flex gap-2.5">
                       <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
@@ -483,69 +498,86 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
                           {note.signature || note.users?.full_name || 'Unknown'}
                           <span className="font-normal"> — {fmtNoteDate(note.created_at)}</span>
                         </p>
-                        <p className="text-[13px] mt-1 leading-snug text-gray-800 dark:text-gray-100">
+                        <p className="text-[13px] mt-1 leading-snug text-gray-800 dark:text-gray-100 whitespace-pre-wrap">
                           "{note.note_text}"
                         </p>
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-[11px] text-ios-gray-2">No notes yet</p>
               )}
-            </div>
-          </section>
+            </section>
+          )}
 
         </div>
       </div>
 
       {/* ── ACTION BUTTONS ──────────────────────────────────────────────────── */}
       {isActive && (
-        <div className="space-y-2 mt-3 pt-3 border-t border-white/20">
+        <div className="mt-4">
           {actionError && (
-            <p className="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+            <p className="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded mb-2">
               {actionError}
             </p>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <ActionButton icon={ArrowRight} label="Transfer"    color="blue"   onClick={() => onTransfer?.(admission)} disabled={isProcessing} />
-            <ActionButton icon={Receipt}    label="Invoice"     color="blue"   onClick={() => onInvoice?.(admission)} disabled={isProcessing} />
-            <ActionButton icon={FileText}   label="Add Note"    color="blue"   onClick={() => onAddNotes?.(admission)} disabled={isProcessing} />
-            <ActionButton icon={Plus}       label="Service"     color="blue"   onClick={() => onAddServices?.(admission, loadServices)} disabled={isProcessing} />
-            
-            {/* TASK 3: Pause / Resume Button */}
-            {admission.billing_paused ? (
-              <ActionButton icon={LogOut}   label="Resume"      color="green"  loading={isProcessing} onClick={handleResumeBilling} />
-            ) : (
-              <ActionButton icon={LogOut}   label="Pause"       color="orange" loading={isProcessing} onClick={handlePauseBilling} />
-            )}
-            
-            {/* TASK 4: Delete Button */}
-            <ActionButton icon={Trash2}    label="Delete"      color="red"    loading={isProcessing} onClick={handleDeletePatient} />
+          <div className="p-3 bg-white/50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl backdrop-blur-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onTransfer?.(admission)}
+                disabled={isProcessing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-ios-blue/10 dark:hover:bg-ios-blue/20 text-ios-blue font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+              >
+                <ArrowRight size={13} /> Transfer
+              </button>
+              <button
+                onClick={() => onInvoice?.(admission)}
+                disabled={isProcessing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-ios-blue/10 dark:hover:bg-ios-blue/20 text-ios-blue font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+              >
+                <Receipt size={13} /> Invoice
+              </button>
+              <button
+                onClick={() => onAddNotes?.(admission)}
+                disabled={isProcessing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+              >
+                <FileText size={13} /> Add Note
+              </button>
+              <button
+                onClick={() => onAddServices?.(admission, loadServices)}
+                disabled={isProcessing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+              >
+                <Plus size={13} /> Service
+              </button>
+              {admission.billing_paused ? (
+                <button
+                  onClick={handleResumeBilling}
+                  disabled={isProcessing}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-50 hover:bg-green-100 dark:bg-ios-green/10 dark:hover:bg-ios-green/20 text-ios-green font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+                >
+                  <LogOut size={13} /> {isProcessing ? '…' : 'Resume'}
+                </button>
+              ) : (
+                <button
+                  onClick={handlePauseBilling}
+                  disabled={isProcessing}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-ios-orange/10 dark:hover:bg-ios-orange/20 text-ios-orange font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+                >
+                  <LogOut size={13} /> {isProcessing ? '…' : 'Pause'}
+                </button>
+              )}
+              <button
+                onClick={handleDeletePatient}
+                disabled={isProcessing}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-red-50 hover:bg-red-100 dark:bg-ios-red/10 dark:hover:bg-ios-red/20 text-ios-red font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
+              >
+                <Trash2 size={13} /> {isProcessing ? '…' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
-  )
-}
-
-function ActionButton({ icon: Icon, label, color, onClick, loading, disabled }) {
-  const cm = {
-    blue:   'text-ios-blue hover:bg-ios-blue/10',
-    orange: 'text-ios-orange hover:bg-ios-orange/10',
-    green:  'text-ios-green hover:bg-ios-green/10',
-    purple: 'text-ios-purple hover:bg-ios-purple/10',
-    red:    'text-ios-red hover:bg-ios-red/10',
-  }
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading || disabled}
-      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium
-                  transition-all active:scale-95 disabled:opacity-50 ${cm[color]}`}
-    >
-      <Icon size={13} />
-      {loading ? '…' : label}
-    </button>
   )
 }

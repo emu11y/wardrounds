@@ -11,7 +11,7 @@ const PALETTE = [
   '#EC4899', '#14B8A6', '#6366F1', '#EF4444',
   '#F59E0B', '#06B6D4', '#F43F5E', '#64748B',
 ]
-const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '', color: DEFAULT_COLOR }
+const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '', color: DEFAULT_COLOR, hospital_id_prefix: '' }
 
 const CATEGORIES = ['Procedure', 'Test', 'Equipment', 'Consultation', 'Other']
 const CATEGORY_COLORS = {
@@ -132,6 +132,7 @@ export default function Settings() {
       phone: hospital.phone || '',
       email: hospital.email || '',
       color: hospital.color || DEFAULT_COLOR,
+      hospital_id_prefix: hospital.hospital_id_prefix || '',
     })
     setShowModal(true)
   }
@@ -154,6 +155,7 @@ export default function Settings() {
           phone: form.phone.trim(),
           email: form.email.trim(),
           color: form.color,
+          hospital_id_prefix: form.hospital_id_prefix.trim() || null,
         })
       } else {
         if (!user?.team_id) { alert('No team found for current user'); setSaving(false); return }
@@ -164,6 +166,7 @@ export default function Settings() {
           phone: form.phone.trim(),
           email: form.email.trim(),
           color: form.color,
+          hospital_id_prefix: form.hospital_id_prefix.trim() || null,
           team_id: user.team_id,
         })
       }
@@ -438,6 +441,9 @@ export default function Settings() {
                         )}
                       </div>
                       {h.location && <p className="text-sm text-gray-500 mt-0.5 pl-5">{h.location}</p>}
+                      <p className="text-xs text-gray-400 mt-1 pl-5">
+                        Tag ID prefix: <span className="font-mono font-medium text-gray-600">{h.hospital_id_prefix || 'Not set'}</span>
+                      </p>
                     </div>
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       {RATE_SERVICES.map((svc) => (
@@ -508,6 +514,9 @@ export default function Settings() {
                             )}
                           </div>
                           {h.location ? <span className="block text-sm text-gray-500 font-normal pl-5">{h.location}</span> : null}
+                          <span className="block text-xs text-gray-400 font-normal pl-5">
+                            Tag prefix: <span className="font-mono">{h.hospital_id_prefix || '—'}</span>
+                          </span>
                         </td>
                         {RATE_SERVICES.map((svc) => (
                           <td key={svc} className="px-4 py-3 text-center">
@@ -811,6 +820,17 @@ export default function Settings() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="e.g. billing@hospital.com" className="w-full rounded-lg border border-white/60 bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Hospital ID Prefix</label>
+                <input
+                  type="text"
+                  value={form.hospital_id_prefix}
+                  onChange={(e) => setForm({ ...form, hospital_id_prefix: e.target.value })}
+                  placeholder="e.g. AK, UHID, IP No., 3PH"
+                  className="w-full rounded-lg border border-white/60 bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono"
+                />
+                <p className="text-xs text-slate-400 mt-1">Used to auto-identify hospital from patient tags (e.g., AK0113939366 matches prefix "AK")</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Colour</label>
