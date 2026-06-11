@@ -548,14 +548,22 @@ export default function Settings() {
                       {(hospitalWards[hospital.id] || []).length === 0 ? (
                         <p className="text-xs text-gray-400 py-3">No wards yet. Add one below.</p>
                       ) : (
-                        (hospitalWards[hospital.id] || []).map(ward => (
-                          <WardRow
-                            key={ward.id}
-                            ward={ward}
-                            onBlur={(newName, newRate) => handleWardBlur(hospital.id, ward.id, newName, newRate)}
-                            onRemove={() => handleRemoveWard(hospital.id, ward.id)}
-                          />
-                        ))
+                        <>
+                          {/* Column headers */}
+                          <div className="hidden sm:flex items-center gap-2 mt-3 mb-1 px-1">
+                            <p className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Ward</p>
+                            <p className="w-28 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400">KES / day</p>
+                            <div className="w-7 flex-shrink-0" />
+                          </div>
+                          {(hospitalWards[hospital.id] || []).map(ward => (
+                            <WardRow
+                              key={ward.id}
+                              ward={ward}
+                              onBlur={(newName, newRate) => handleWardBlur(hospital.id, ward.id, newName, newRate)}
+                              onRemove={() => handleRemoveWard(hospital.id, ward.id)}
+                            />
+                          ))}
+                        </>
                       )}
                       <button
                         onClick={() => handleAddWard(hospital.id)}
