@@ -563,7 +563,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
       {/* ── Actions ── */}
       {isActive && (
-        <div className="mt-3">
+        <div className="mt-3" style={{ marginLeft: '-2px', marginRight: '-2px' }}>
           <button
             onClick={() => setActionsOpen(prev => !prev)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
@@ -576,7 +576,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
           {/* No overflow-hidden — lets hover:scale-110 breathe. pointer-events-none when closed. */}
           <div className={`transition-all duration-300 ease-out ${actionsOpen ? 'max-h-24 opacity-100 mt-3 pointer-events-auto' : 'max-h-0 opacity-0 mt-0 pointer-events-none'}`}>
             <div className="overflow-visible pb-2">
-              <div className="flex items-center gap-2 flex-nowrap overflow-visible">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-nowrap overflow-x-auto scrollbar-none pb-1">
                 {[
                   {
                     onClick: () => onTransfer?.(admission),
@@ -636,7 +636,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
                     title={btn.title}
                     disabled={btn.disabled}
                     style={{ transitionDelay: actionsOpen ? `${i * 35}ms` : '0ms' }}
-                    className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center border transition-all duration-[250ms] ease-out hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex-shrink-0 flex items-center justify-center border transition-all duration-[250ms] ease-out hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
                       ${actionsOpen ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-3 scale-75 opacity-0'}
                       ${btn.colorClass}`}
                   >
