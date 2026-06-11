@@ -446,12 +446,17 @@ export default function Settings() {
       </div>
 
           <div className="bg-white p-4 md:p-6 rounded-xl shadow mt-6">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-xl font-bold">Daily Visit Rates (KES)</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Click a hospital to manage its wards and rates.</p>
+        <div className="mb-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-bold">Daily Visit Rates (KES)</h2>
+              <p className="text-sm text-gray-500 mt-0.5">Click a hospital to manage its wards and rates.</p>
+            </div>
+            <button onClick={openAddModal} className="hidden sm:block px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition text-sm flex-shrink-0">
+              + Add Hospital
+            </button>
           </div>
-          <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition text-sm flex-shrink-0">
+          <button onClick={openAddModal} className="sm:hidden w-full mt-3 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 transition-colors">
             + Add Hospital
           </button>
         </div>
@@ -519,8 +524,8 @@ export default function Settings() {
                             <div className="w-6 flex-shrink-0" />
                           </div>
                           {(hospitalWards[hospital.id] || []).map(ward => (
-                            <div key={ward.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/60 border border-gray-100 mb-1">
-                              <span className="flex-1 text-sm text-gray-800 truncate">{ward.service_name}</span>
+                            <div key={ward.id} className="flex items-start gap-2 px-3 py-2 rounded-xl bg-white/60 border border-gray-100 mb-1">
+                              <span className="flex-1 text-sm text-gray-800 break-words min-w-0">{ward.service_name}</span>
                               <span className="w-20 text-right text-sm font-medium text-gray-700 flex-shrink-0">
                                 {Number(ward.price_per_day).toLocaleString()}
                               </span>
@@ -553,16 +558,24 @@ export default function Settings() {
 
       {/* ── Additional Services & Charges ───────────────────────────────────── */}
       <div className="bg-white p-4 md:p-6 rounded-xl shadow mt-6">
-        <div className="flex justify-between items-start gap-4 mb-1">
-          <div>
-            <h2 className="text-xl font-bold">Additional Services &amp; Charges</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Create services that can be added to any patient's bill — procedures, tests, equipment, or one-off charges. These appear as line items on the invoice.
-            </p>
+        <div className="mb-1">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-xl font-bold">Additional Services &amp; Charges</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Create services that can be added to any patient's bill — procedures, tests, equipment, or one-off charges. These appear as line items on the invoice.
+              </p>
+            </div>
+            <button
+              onClick={openAddServiceModal}
+              className="hidden sm:block flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-blue-700 transition ml-4"
+            >
+              + New Service
+            </button>
           </div>
           <button
             onClick={openAddServiceModal}
-            className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-blue-700 transition"
+            className="sm:hidden w-full mt-3 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 transition-colors"
           >
             + New Service
           </button>
