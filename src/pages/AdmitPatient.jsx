@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import TopHeader from '../components/TopHeader'
 import { extractPatientDataFromTag } from '../lib/hospitalTagReader'
+import { supabase } from '../lib/supabaseClient'
 import {
   fetchHospitals,
   searchPatients,
@@ -53,6 +54,7 @@ export default function AdmitPatient() {
   const [submitError, setSubmitError] = useState(null)
   const [toast, setToast] = useState(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [activeAdmissionWarning, setActiveAdmissionWarning] = useState(null)
 
   // Wards derived from selected hospital (no extra fetch — fetchHospitals includes hospital_services)
   const wards = hospitals.find(h => h.id === hospitalId)?.hospital_services || []
@@ -84,7 +86,7 @@ export default function AdmitPatient() {
     }, 300)
   }
 
-  function handleSelectExistingPatient(patient) {
+  async function handleSelectExistingPatient(patient) {
     setSelectedPatientId(patient.id)
     setFirstName(patient.first_name)
     setLastName(patient.last_name)
@@ -92,6 +94,15 @@ export default function AdmitPatient() {
     setInsurance(patient.insurance_name || '')
     setSearchQuery(`${patient.first_name} ${patient.last_name}`)
     setSearchResults([])
+    setActiveAdmissionWarning(null)
+
+    const { data: activeAdmission } = await supabase
+      .from('admissions')
+      .select('id, ward, hospitals(name)')
+      .eq('patient_id', patient.id)
+      .eq('status', 'admitted')
+      .maybeSingle()
+    if (activeAdmission) setActiveAdmissionWarning(activeAdmission)
   }
 
   function clearPatientSelection() {
@@ -102,6 +113,7 @@ export default function AdmitPatient() {
     setInsurance('')
     setSearchQuery('')
     setSearchResults([])
+    setActiveAdmissionWarning(null)
   }
 
   function fileToBase64PNG(file) {
@@ -256,6 +268,7 @@ export default function AdmitPatient() {
         }
       }
 
+      setActiveAdmissionWarning(null)
       navigate('/')
     } catch (err) {
       setSubmitError(err.message || 'Failed to admit patient.')
@@ -284,6 +297,7 @@ export default function AdmitPatient() {
     setScanError(null)
     setScannedData(null)
     setSubmitError(null)
+    setActiveAdmissionWarning(null)
     setShowResetConfirm(false)
   }
 
@@ -417,6 +431,29 @@ export default function AdmitPatient() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+
+        {activeAdmissionWarning && (
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <span className="text-amber-500 text-lg flex-shrink-0">⚠️</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-800">Patient already admitted</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                {activeAdmissionWarning.hospitals?.name
+                  ? `Currently admitted at ${activeAdmissionWarning.hospitals.name}`
+                  : 'This patient has an active admission.'
+                }
+                {' '}You can still proceed to create a second admission if needed.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveAdmissionWarning(null)}
+              className="text-amber-400 hover:text-amber-600 text-lg leading-none flex-shrink-0"
+            >
+              ×
+            </button>
           </div>
         )}
 

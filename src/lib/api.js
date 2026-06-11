@@ -5,7 +5,7 @@ import { supabase } from './supabaseClient'
 export async function fetchPatients(teamId) {
   const { data, error } = await supabase
     .from('patients')
-    .select('*, hospitals(name, location), admissions(status)')
+    .select('*, hospitals(name, location), admissions(status, patient_hospital_id, created_at)')
     .eq('team_id', teamId)
     .order('created_at', { ascending: false })
   if (error) throw error

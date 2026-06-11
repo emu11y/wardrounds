@@ -280,6 +280,8 @@ export default function Patients() {
               const isLoadingA = loadingAdmissions[patient.id]
               const latest = admissions[0]
               const age = calcAge(patient.date_of_birth)
+              const recentAdmission = [...(patient.admissions || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+              const patientHospitalId = recentAdmission?.patient_hospital_id || null
 
               return (
                 <div key={patient.id} className="glass-card overflow-hidden">
@@ -294,10 +296,13 @@ export default function Patients() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm">{patient.first_name} {patient.last_name}</p>
-                      <p className="text-xs text-ios-gray-1 truncate">
-                        {age !== null ? `${age} yrs · ` : ''}{formatDate(patient.date_of_birth)}
-                        {patient.insurance_name ? ` · ${patient.insurance_name}` : ''}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                        {age !== null && <span className="text-xs text-gray-500">{age} yrs</span>}
+                        {age !== null && patient.date_of_birth && <span className="text-gray-300 text-xs">·</span>}
+                        {patient.date_of_birth && <span className="text-xs text-gray-500">{formatDate(patient.date_of_birth)}</span>}
+                        {patientHospitalId && <span className="text-gray-300 text-xs">·</span>}
+                        {patientHospitalId && <span className="text-xs font-medium text-blue-500">#{patientHospitalId}</span>}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {latest && (() => {
