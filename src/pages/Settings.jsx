@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService, fetchTeamProfile, saveTeamProfile, fetchTeamServices, createTeamService, updateTeamService, setTeamServiceStatus, deleteTeamService, fetchHospitalWards, addHospitalWard, updateHospitalWard, deleteHospitalWard } from '../lib/api'
+import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService, fetchTeamProfile, saveTeamProfile, fetchTeamServices, createTeamService, updateTeamService, setTeamServiceStatus, deleteTeamService, fetchHospitalWards, addHospitalWard, deleteHospitalWard } from '../lib/api'
 
 const DEFAULT_COLOR = '#3B82F6'
 const PALETTE = [
@@ -21,40 +21,6 @@ const CATEGORY_COLORS = {
 }
 const EMPTY_SERVICE_FORM = { service_name: '', description: '', category: 'Procedure', price: '', billing_type: 'one-off' }
 
-function WardRow({ ward, onBlur, onRemove }) {
-  const [name, setName] = useState(ward.service_name)
-  const [rate, setRate] = useState(String(ward.price_per_day))
-
-  return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-center py-2 border-b border-gray-100 last:border-0">
-      <input
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onBlur={() => onBlur(name, rate)}
-        placeholder="Ward name"
-        className="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
-      />
-      <div className="flex gap-2 items-center flex-shrink-0">
-        <input
-          value={rate}
-          onChange={e => setRate(e.target.value)}
-          onBlur={() => onBlur(name, rate)}
-          placeholder="KES/day"
-          type="number"
-          className="w-28 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
-        />
-        <button
-          onClick={onRemove}
-          className="w-7 h-7 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-}
 
 export default function Settings() {
   const { user } = useAuth()
@@ -265,9 +231,6 @@ export default function Settings() {
     })
   }
 
-  const handleWardBlur = async (hospitalId, wardId, newName, newRate) => {
-    await updateHospitalWard(wardId, newName, Number(newRate))
-  }
 
   const openAddServiceModal = () => {
     setEditingService(null)
@@ -550,18 +513,26 @@ export default function Settings() {
                       ) : (
                         <>
                           {/* Column headers */}
-                          <div className="hidden sm:flex items-center gap-2 mt-3 mb-1 px-1">
-                            <p className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Ward</p>
-                            <p className="w-28 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400">KES / day</p>
-                            <div className="w-7 flex-shrink-0" />
+                          <div className="flex items-center gap-2 px-3 pb-1 mt-3 mb-1">
+                            <p className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Ward</p>
+                            <p className="w-20 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-400 flex-shrink-0">KES / day</p>
+                            <div className="w-6 flex-shrink-0" />
                           </div>
                           {(hospitalWards[hospital.id] || []).map(ward => (
-                            <WardRow
-                              key={ward.id}
-                              ward={ward}
-                              onBlur={(newName, newRate) => handleWardBlur(hospital.id, ward.id, newName, newRate)}
-                              onRemove={() => handleRemoveWard(hospital.id, ward.id)}
-                            />
+                            <div key={ward.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/60 border border-gray-100 mb-1">
+                              <span className="flex-1 text-sm text-gray-800 truncate">{ward.service_name}</span>
+                              <span className="w-20 text-right text-sm font-medium text-gray-700 flex-shrink-0">
+                                {Number(ward.price_per_day).toLocaleString()}
+                              </span>
+                              <button
+                                onClick={() => handleRemoveWard(hospital.id, ward.id)}
+                                className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600 flex-shrink-0 transition-colors"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
                           ))}
                         </>
                       )}
