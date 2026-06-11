@@ -32,8 +32,7 @@ export default function TransferModal({ admission, onClose, onSaved }) {
     setWard('')
   }
 
-  const WARD_NAMES = ['General Ward', 'HDU', 'ICU', 'High Dependency Unit', 'Intensive Care Unit', 'Private Ward', 'Semi-Private Ward', 'Isolation Ward']
-  const wardServices = services.filter(s => WARD_NAMES.includes(s.service_name))
+  const wardServices = services.filter(s => s.service_type === 'ward' && s.status === 'active')
 
   async function handleSubmit(e) {
     e.preventDefault()

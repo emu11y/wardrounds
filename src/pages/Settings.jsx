@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService, fetchTeamProfile, saveTeamProfile, fetchTeamServices, createTeamService, updateTeamService, setTeamServiceStatus, deleteTeamService } from '../lib/api'
+import { getHospitalsByTeam, createHospital, updateHospital, setHospitalStatus, createHospitalService, updateHospitalService, fetchTeamProfile, saveTeamProfile, fetchTeamServices, createTeamService, updateTeamService, setTeamServiceStatus, deleteTeamService, fetchHospitalWards, addHospitalWard, updateHospitalWard, deleteHospitalWard } from '../lib/api'
 
-const RATE_SERVICES = ['General Ward', 'HDU', 'ICU']
-const RATE_LABELS = { 'General Ward': 'Ward', HDU: 'HDU', ICU: 'ICU' }
 const DEFAULT_COLOR = '#3B82F6'
 const PALETTE = [
   '#3B82F6', '#10B981', '#8B5CF6', '#F97316',
@@ -23,19 +21,51 @@ const CATEGORY_COLORS = {
 }
 const EMPTY_SERVICE_FORM = { service_name: '', description: '', category: 'Procedure', price: '', billing_type: 'one-off' }
 
+function WardRow({ ward, onBlur, onRemove }) {
+  const [name, setName] = useState(ward.service_name)
+  const [rate, setRate] = useState(String(ward.price_per_day))
+
+  return (
+    <div className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onBlur={() => onBlur(name, rate)}
+        placeholder="Ward name"
+        className="flex-1 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
+      />
+      <input
+        value={rate}
+        onChange={e => setRate(e.target.value)}
+        onBlur={() => onBlur(name, rate)}
+        placeholder="KES/day"
+        type="number"
+        className="w-28 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
+      />
+      <button
+        onClick={onRemove}
+        className="w-7 h-7 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 export default function Settings() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') || 'billing'
 
   const [hospitals, setHospitals] = useState([])
-  const [rates, setRates] = useState({})
   const [showModal, setShowModal] = useState(false)
   const [editingHospital, setEditingHospital] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
-  const [savingRates, setSavingRates] = useState(false)
-  const [ratesSaved, setRatesSaved] = useState(false)
+  const [expandedHospitalId, setExpandedHospitalId] = useState(null)
+  const [hospitalWards, setHospitalWards] = useState({})
 
   const EMPTY_PRACTICE = { practice_name: '', doctor_name: '', doctor_title: 'Attending Physician', address: '', phone: '', email: '', logo_url: '' }
   const [practiceForm, setPracticeForm] = useState(EMPTY_PRACTICE)
@@ -189,31 +219,37 @@ export default function Settings() {
     }
   }
 
-  const handleSaveRates = async () => {
-    setSavingRates(true)
-    try {
-      for (const h of hospitals) {
-        const hospitalRates = rates[h.id] || {}
-        const existingServices = h.hospital_services || []
-        for (const serviceName of RATE_SERVICES) {
-          const priceStr = hospitalRates[serviceName]
-          const price = parseFloat(priceStr)
-          if (priceStr === '' || isNaN(price)) continue
-          const existing = existingServices.find(s => s.service_name === serviceName)
-          if (existing) {
-            await updateHospitalService(existing.id, { price_per_day: price })
-          } else {
-            await createHospitalService({ hospital_id: h.id, service_name: serviceName, price_per_day: price, service_type: 'ward' })
-          }
-        }
-      }
-      setRatesSaved(true)
-      setTimeout(() => setRatesSaved(false), 3000)
-      loadHospitals()
-    } catch (err) {
-      alert('Failed to save rates: ' + err.message)
+  const handleExpandHospital = async (hospitalId) => {
+    if (expandedHospitalId === hospitalId) {
+      setExpandedHospitalId(null)
+      return
     }
-    setSavingRates(false)
+    setExpandedHospitalId(hospitalId)
+    if (!hospitalWards[hospitalId]) {
+      const wards = await fetchHospitalWards(hospitalId)
+      setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
+    }
+  }
+
+  const handleAddWard = async (hospitalId) => {
+    const name = prompt('Ward name (e.g. General Ward, ICU, Maternity):')
+    if (!name?.trim()) return
+    const rate = prompt('KES per day:')
+    if (!rate || isNaN(Number(rate))) return
+    await addHospitalWard(hospitalId, name.trim(), Number(rate))
+    const wards = await fetchHospitalWards(hospitalId)
+    setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
+  }
+
+  const handleRemoveWard = async (hospitalId, wardId) => {
+    if (!window.confirm('Remove this ward?')) return
+    await deleteHospitalWard(wardId)
+    const wards = await fetchHospitalWards(hospitalId)
+    setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
+  }
+
+  const handleWardBlur = async (hospitalId, wardId, newName, newRate) => {
+    await updateHospitalWard(wardId, newName, Number(newRate))
   }
 
   const openAddServiceModal = () => {
@@ -287,21 +323,32 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold">Settings</h1>
+    <div className="flex flex-col min-h-full">
+      <div className="p-4 space-y-4">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+            W
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+            <p className="text-xs text-gray-500">{user?.email || 'Dr. Ebrahim Yusuf'}</p>
+          </div>
+        </div>
       </div>
 
       {/* Tab navigation */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2">
         {[['billing', 'Billing Settings'], ['admin', 'Admin Settings']].map(([tab, label]) => (
           <button
             key={tab}
             onClick={() => setSearchParams({ tab })}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
               activeTab === tab
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             {label}
@@ -413,65 +460,54 @@ export default function Settings() {
 
           <div className="bg-white p-4 md:p-6 rounded-xl shadow mt-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Daily Visit Rates (KES)</h2>
-          <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition text-sm">
+          <div>
+            <h2 className="text-xl font-bold">Daily Visit Rates (KES)</h2>
+            <p className="text-sm text-gray-500 mt-0.5">Click a hospital to manage its wards and rates.</p>
+          </div>
+          <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition text-sm flex-shrink-0">
             + Add Hospital
           </button>
         </div>
         {hospitals.length === 0 ? (
           <p className="text-gray-500">No hospitals yet. Click "Add Hospital" to get started.</p>
         ) : (
-          <>
-            {/* ── Mobile: one card per hospital ──────────────────────────────── */}
-            <div className="block md:hidden space-y-3">
-              {hospitals.map((h) => {
-                const isInactive = h.status === 'inactive'
-                return (
-                  <div
-                    key={h.id}
-                    className={`glass-card border-l-4 ${isInactive ? 'opacity-50' : ''}`}
-                    style={{ borderLeftColor: h.color || DEFAULT_COLOR }}
-                  >
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: h.color || DEFAULT_COLOR }} />
-                        <span className="font-semibold">{h.name}</span>
-                        {isInactive && (
-                          <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>
-                        )}
-                      </div>
-                      {h.location && <p className="text-sm text-gray-500 mt-0.5 pl-5">{h.location}</p>}
-                      <p className="text-xs text-gray-400 mt-1 pl-5">
-                        Tag ID prefix: <span className="font-mono font-medium text-gray-600">{h.hospital_id_prefix || 'Not set'}</span>
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      {RATE_SERVICES.map((svc) => (
-                        <div key={svc} className="flex flex-col items-center gap-1">
-                          <label className="text-xs text-gray-500 font-medium">{RATE_LABELS[svc]}</label>
-                          <input
-                            type="number"
-                            className="w-full px-2 py-1.5 border rounded-lg text-center text-sm"
-                            placeholder="0"
-                            value={rates[h.id]?.[svc] ?? ''}
-                            onChange={(e) => setRates(prev => ({
-                              ...prev,
-                              [h.id]: { ...prev[h.id], [svc]: e.target.value },
-                            }))}
-                          />
+          <div className="space-y-2">
+            {hospitals.map(hospital => {
+              const isExpanded = expandedHospitalId === hospital.id
+              const isInactive = hospital.status === 'inactive'
+              return (
+                <div key={hospital.id} className={`glass-card rounded-2xl overflow-hidden ${isInactive ? 'opacity-60' : ''}`}>
+                  {/* Hospital header */}
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => handleExpandHospital(hospital.id)}
+                      className="flex-1 flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: hospital.color || DEFAULT_COLOR }} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            {hospital.name}
+                            {isInactive && <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {hospital.location}
+                            {hospital.hospital_id_prefix && ` · Tag: ${hospital.hospital_id_prefix}`}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
+                      </div>
+                      <span className={`text-gray-400 text-xs ml-3 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                    </button>
+                    <div className="flex gap-1 pr-3">
                       <button
-                        onClick={() => openEditModal(h)}
-                        className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition"
+                        onClick={() => openEditModal(hospital)}
+                        className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => handleToggleStatus(h)}
-                        className={`flex-1 px-3 py-1.5 text-sm border rounded-lg transition ${
+                        onClick={() => handleToggleStatus(hospital)}
+                        className={`px-2.5 py-1 text-xs border rounded-lg transition ${
                           isInactive
                             ? 'border-green-300 text-green-600 hover:bg-green-50'
                             : 'border-orange-200 text-orange-500 hover:bg-orange-50'
@@ -481,93 +517,35 @@ export default function Settings() {
                       </button>
                     </div>
                   </div>
-                )
-              })}
-            </div>
 
-            {/* ── Desktop: table layout ──────────────────────────────────────── */}
-            <div className="hidden md:block">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gray-100 border-b-2">
-                    <th className="text-left px-4 py-2">Hospital</th>
-                    {RATE_SERVICES.map(svc => (
-                      <th key={svc} className="px-4 py-2">{RATE_LABELS[svc]}</th>
-                    ))}
-                    <th className="px-4 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hospitals.map((h) => {
-                    const isInactive = h.status === 'inactive'
-                    return (
-                      <tr key={h.id} className={`border-b ${isInactive ? 'opacity-50' : ''}`}>
-                        <td className="px-4 py-3 font-semibold">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="inline-block w-3 h-3 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: h.color || DEFAULT_COLOR }}
-                            />
-                            {h.name}
-                            {isInactive && (
-                              <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>
-                            )}
-                          </div>
-                          {h.location ? <span className="block text-sm text-gray-500 font-normal pl-5">{h.location}</span> : null}
-                          <span className="block text-xs text-gray-400 font-normal pl-5">
-                            Tag prefix: <span className="font-mono">{h.hospital_id_prefix || '—'}</span>
-                          </span>
-                        </td>
-                        {RATE_SERVICES.map((svc) => (
-                          <td key={svc} className="px-4 py-3 text-center">
-                            <input
-                              type="number"
-                              className="w-24 px-2 py-1 border rounded text-center"
-                              placeholder="0"
-                              value={rates[h.id]?.[svc] ?? ''}
-                              onChange={(e) => setRates(prev => ({
-                                ...prev,
-                                [h.id]: { ...prev[h.id], [svc]: e.target.value },
-                              }))}
-                            />
-                          </td>
-                        ))}
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <button
-                            onClick={() => openEditModal(h)}
-                            className="px-3 py-1 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition mr-2"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleToggleStatus(h)}
-                            className={`px-3 py-1 text-sm border rounded-lg transition ${
-                              isInactive
-                                ? 'border-green-300 text-green-600 hover:bg-green-50'
-                                : 'border-orange-200 text-orange-500 hover:bg-orange-50'
-                            }`}
-                          >
-                            {isInactive ? 'Activate' : 'Deactivate'}
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
+                  {/* Expandable ward list */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-gray-100">
+                      {(hospitalWards[hospital.id] || []).length === 0 ? (
+                        <p className="text-xs text-gray-400 py-3">No wards yet. Add one below.</p>
+                      ) : (
+                        (hospitalWards[hospital.id] || []).map(ward => (
+                          <WardRow
+                            key={ward.id}
+                            ward={ward}
+                            onBlur={(newName, newRate) => handleWardBlur(hospital.id, ward.id, newName, newRate)}
+                            onRemove={() => handleRemoveWard(hospital.id, ward.id)}
+                          />
+                        ))
+                      )}
+                      <button
+                        onClick={() => handleAddWard(hospital.id)}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 transition-colors"
+                      >
+                        + Add Ward
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={handleSaveRates}
-            disabled={savingRates}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50"
-          >
-            {savingRates ? 'Saving...' : 'Save Rates'}
-          </button>
-          {ratesSaved && <span className="text-green-600 text-sm font-medium">Rates saved!</span>}
-        </div>
       </div>
 
       {/* ── Additional Services & Charges ───────────────────────────────────── */}
@@ -857,6 +835,7 @@ export default function Settings() {
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   )
 }
