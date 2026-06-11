@@ -39,9 +39,10 @@ export default function Sidebar() {
       {/* Sidebar panel */}
       <aside
         className={`
-          fixed md:relative z-40 md:z-auto
-          flex flex-col h-full md:h-[calc(100vh-1.5rem)]
-          rounded-3xl
+          fixed top-3 bottom-3 left-3 md:relative md:top-auto md:bottom-auto md:left-auto
+          z-40 md:z-auto
+          flex flex-col md:h-[calc(100vh-1.5rem)]
+          rounded-2xl
           glass border border-white/30
           shadow-xl
           transition-all duration-300 ease-in-out
@@ -94,7 +95,7 @@ export default function Sidebar() {
         </nav>
 
         {/* User footer */}
-        <div className={`p-3 border-t border-white/20 space-y-1`}>
+        <div className={`px-3 pt-3 pb-4 border-t border-white/20 space-y-1`}>
           {user && !collapsed && (
             <div className="mb-1">
               {/* Collapsible user header */}
