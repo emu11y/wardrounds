@@ -374,7 +374,6 @@ export async function fetchHospitalWards(hospitalId) {
     .eq('hospital_id', hospitalId)
     .eq('service_type', 'ward')
     .eq('status', 'active')
-    .order('created_at', { ascending: true })
   if (error) throw error
   return data || []
 }
