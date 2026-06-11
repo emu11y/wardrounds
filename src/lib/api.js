@@ -123,11 +123,12 @@ export async function createAdmission(admission) {
     .maybeSingle()
 
   if (wardSvc) {
-    const eatOffset = 3 * 60 * 60 * 1000
-    const todayEAT = new Date(Date.now() + eatOffset).toISOString().split('T')[0]
+    const today = new Date()
+    today.setUTCHours(0, 0, 0, 0)
     const records = []
     const cursor = new Date(admission.team_start_date || admission.admission_date)
-    while (cursor.toISOString().split('T')[0] <= todayEAT) {
+    cursor.setUTCHours(0, 0, 0, 0)
+    while (cursor <= today) {
       records.push({
         admission_id: data.id,
         service_id: wardSvc.id,
@@ -135,7 +136,7 @@ export async function createAdmission(admission) {
         amount: wardSvc.price_per_day,
         status: 'pending',
       })
-      cursor.setDate(cursor.getDate() + 1)
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
     }
     if (records.length > 0) {
       await supabase.from('billing_records').insert(records)
@@ -160,6 +161,89 @@ export async function dischargeAdmission(admissionId) {
   })
 
   return data
+}
+
+export async function transferPatient(admissionId, newWard, transferDate, newHospitalId = null) {
+  // 1. Get current admission
+  const { data: admission, error: admError } = await supabase
+    .from('admissions')
+    .select('id, hospital_id, ward, patient_id, team_id')
+    .eq('id', admissionId)
+    .single()
+  if (admError) throw admError
+
+  const oldWard = admission.ward
+  const targetHospitalId = newHospitalId || admission.hospital_id
+
+  // 2. Update admission ward (and optionally hospital)
+  const updateData = { ward: newWard }
+  if (newHospitalId) updateData.hospital_id = newHospitalId
+
+  const { data: updated, error: updateError } = await supabase
+    .from('admissions')
+    .update(updateData)
+    .eq('id', admissionId)
+    .select()
+    .single()
+  if (updateError) throw updateError
+
+  // 3. Get service records for old and new wards
+  const { data: oldWardSvc } = await supabase
+    .from('hospital_services')
+    .select('id, price_per_day')
+    .eq('hospital_id', admission.hospital_id)
+    .eq('service_name', oldWard)
+    .maybeSingle()
+
+  const { data: newWardSvc, error: wardError } = await supabase
+    .from('hospital_services')
+    .select('id, price_per_day')
+    .eq('hospital_id', targetHospitalId)
+    .eq('service_name', newWard)
+    .single()
+  if (wardError) throw wardError
+
+  // 4. Delete all billing records from transferDate onwards — old ward records cleared; pre-date preserved
+  await supabase
+    .from('billing_records')
+    .delete()
+    .eq('admission_id', admissionId)
+    .gte('accrual_date', transferDate)
+
+  // 5. Create new ward billing records from transferDate through today (inclusive, UTC-safe)
+  const todayUTC = new Date()
+  todayUTC.setUTCHours(0, 0, 0, 0)
+  const records = []
+  const cursor = new Date(transferDate)
+  cursor.setUTCHours(0, 0, 0, 0)
+  while (cursor <= todayUTC) {
+    records.push({
+      admission_id: admissionId,
+      service_id: newWardSvc.id,
+      accrual_date: cursor.toISOString().split('T')[0],
+      amount: newWardSvc.price_per_day,
+      status: 'pending',
+    })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  if (records.length > 0) {
+    const { error: billingError } = await supabase.from('billing_records').insert(records)
+    if (billingError) throw billingError
+  }
+
+  // 6. Create timeline event
+  const { error: timelineError } = await supabase
+    .from('timeline_events')
+    .insert({
+      admission_id: admissionId,
+      event_type: 'transferred',
+      ward: newWard,
+      timestamp: new Date(transferDate).toISOString(),
+      notes: `Transferred from ${oldWard} to ${newWard}`,
+    })
+  if (timelineError) throw timelineError
+
+  return updated
 }
 
 export async function transferAdmission(admissionId, newWard, newHospitalId) {
@@ -327,8 +411,9 @@ export async function fetchBillingRecords(admissionId) {
 // Fills missing daily ward records when the edge function hasn't run.
 // Safe to call on every card mount — skips if up-to-date.
 export async function fillDailyBillingGaps(admission, existingRecords) {
-  const eatOffset = 3 * 60 * 60 * 1000
-  const todayEAT  = new Date(Date.now() + eatOffset).toISOString().split('T')[0]
+  const today = new Date()
+  today.setUTCHours(0, 0, 0, 0)
+  const todayStr = today.toISOString().split('T')[0]
 
   const hospitalServices = admission.hospitals?.hospital_services || []
   const wardSvc = hospitalServices.find(s => s.service_name === admission.ward)
@@ -340,13 +425,20 @@ export async function fillDailyBillingGaps(admission, existingRecords) {
   const lastDate = wardRecords.reduce((max, r) =>
     r.accrual_date > max ? r.accrual_date : max, wardRecords[0].accrual_date
   )
-  if (lastDate >= todayEAT) return existingRecords
+  if (lastDate >= todayStr) return existingRecords
 
-  const existingDates = new Set(existingRecords.map(r => r.accrual_date))
+  // Fresh DB fetch — guards against concurrent calls that share the same stale existingRecords snapshot
+  const { data: freshRows } = await supabase
+    .from('billing_records')
+    .select('accrual_date')
+    .eq('admission_id', admission.id)
+  const existingDates = new Set((freshRows || []).map(r => r.accrual_date))
+
   const toInsert = []
   const cursor = new Date(lastDate)
-  cursor.setDate(cursor.getDate() + 1)
-  while (cursor.toISOString().split('T')[0] <= todayEAT) {
+  cursor.setUTCHours(0, 0, 0, 0)
+  cursor.setUTCDate(cursor.getUTCDate() + 1)
+  while (cursor <= today) {
     const d = cursor.toISOString().split('T')[0]
     if (!existingDates.has(d)) {
       toInsert.push({
@@ -357,7 +449,7 @@ export async function fillDailyBillingGaps(admission, existingRecords) {
         status: 'pending',
       })
     }
-    cursor.setDate(cursor.getDate() + 1)
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   if (toInsert.length === 0) return existingRecords
 

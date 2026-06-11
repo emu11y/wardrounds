@@ -103,12 +103,24 @@ export default function AdmitPatient() {
     setSearchResults([])
   }
 
-  function fileToBase64(file) {
+  function fileToBase64PNG(file) {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result.split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        canvas.getContext('2d').drawImage(img, 0, 0)
+        const base64 = canvas.toDataURL('image/png').split(',')[1]
+        URL.revokeObjectURL(objectUrl)
+        resolve(base64)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error('Could not load image'))
+      }
+      img.src = objectUrl
     })
   }
 
@@ -121,8 +133,8 @@ export default function AdmitPatient() {
     setIsScanning(true)
 
     try {
-      const base64 = await fileToBase64(file)
-      const extracted = await extractPatientDataFromTag(base64, hospitals, file.type || 'image/jpeg')
+      const base64 = await fileToBase64PNG(file)
+      const extracted = await extractPatientDataFromTag(base64, hospitals, 'image/png')
 
       if (extracted.firstName) setFirstName(extracted.firstName)
       if (extracted.lastName) setLastName(extracted.lastName)

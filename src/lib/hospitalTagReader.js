@@ -1,3 +1,10 @@
+function normaliseMediaType(rawType) {
+  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  if (allowed.includes(rawType)) return rawType
+  // HEIC, HEIF, BMP, TIFF, AVIF, etc. → treat as jpeg (base64 payload is unchanged)
+  return 'image/jpeg'
+}
+
 export async function extractPatientDataFromTag(imageBase64, hospitals = [], mediaType = 'image/jpeg') {
   const apiKey = import.meta.env.VITE_CLAUDE_API_KEY
   if (!apiKey) throw new Error('VITE_CLAUDE_API_KEY is not set')
@@ -47,7 +54,7 @@ Return ONLY the JSON object, nothing else.`
           content: [
             {
               type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: imageBase64 },
+              source: { type: 'base64', media_type: normaliseMediaType(mediaType), data: imageBase64 },
             },
             { type: 'text', text: prompt },
           ],

@@ -40,11 +40,15 @@ function daysBetween(from, to) {
   return Math.max(1, Math.ceil((new Date(to) - new Date(from)) / 86400000))
 }
 
-function daysSince(d) {
-  if (!d) return 0
-  const start = new Date(d).setHours(0, 0, 0, 0)
-  const today = new Date().setHours(0, 0, 0, 0)
-  return Math.max(1, Math.ceil(Math.abs(today - start) / 86400000) + 1)
+function calculateDaysBetween(startDateStr) {
+  if (!startDateStr) return 0
+  const start = new Date(startDateStr)
+  const end = new Date()
+  start.setUTCHours(0, 0, 0, 0)
+  end.setUTCHours(0, 0, 0, 0)
+  const diffTime = Math.abs(end - start)
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  return Math.max(1, diffDays)
 }
 
 
@@ -80,7 +84,17 @@ function buildWardLines(admission) {
       }
     }
 
-    const days = daysBetween(from, to)
+    const days = (() => {
+      const f = new Date(from)
+      const t = new Date(to)
+      f.setUTCHours(0, 0, 0, 0)
+      t.setUTCHours(0, 0, 0, 0)
+      const isLast = i === wardEvents.length - 1
+      // Last (current) segment: inclusive today (+1). Past segments: exclusive end (end = next segment's start).
+      return isLast
+        ? Math.max(1, Math.floor((t - f) / 86400000) + 1)
+        : Math.max(0, Math.floor((t - f) / 86400000))
+    })()
     const svc = hospitalServices.find(s => s.service_name === ward)
     const rate = Number(svc?.price_per_day ?? 0)
     return {
@@ -159,43 +173,44 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
   }, [admission.id])
 
   const age     = calcAge(patient?.date_of_birth)
-  const days    = Math.max(0, daysSince(admission.team_start_date || admission.admission_date))
+  const days    = calculateDaysBetween(admission.team_start_date || admission.admission_date)
   const shortId = admission.id.slice(0, 8).toUpperCase()
 
   const billingBreakdown = (() => {
     const items = []
-    
-    // Add ward lines with ACTUAL rates from buildWardLines (not back-calculated)
-    // For same-day transfers, only bill the final ward
-    const wardEventsByDate = {}
-    wardLines.forEach(line => {
-      const dateKey = line.date.toDateString()
-      wardEventsByDate[dateKey] = line
+
+    // Build service_id → { name, rate } map from embedded hospital services
+    const hospitalServices = admission.hospitals?.hospital_services || []
+    const serviceMap = {}
+    hospitalServices.forEach(s => { serviceMap[s.id] = { name: s.service_name, rate: Number(s.price_per_day) } })
+
+    // Group billing records by service_id; null service_id falls back to admission.ward
+    const groups = {}
+    billingRecords.forEach(r => {
+      const key = r.service_id ?? '__unknown__'
+      if (!groups[key]) groups[key] = []
+      groups[key].push(r)
     })
-    
-    Object.values(wardEventsByDate).forEach(line => {
-      if (line.rate > 0) {
-        items.push({ 
-          type: 'ward', 
-          name: line.ward, 
-          days: line.days, 
-          rate: line.rate, 
-          total: line.total 
-        })
-      }
+
+    Object.entries(groups).forEach(([key, recs]) => {
+      const svc = key !== '__unknown__' ? serviceMap[key] : null
+      const name = svc?.name ?? admission.ward
+      const rate = svc?.rate ?? 0
+      const total = recs.reduce((s, r) => s + Number(r.amount), 0)
+      items.push({ type: 'ward', name, days: recs.length, rate, total })
     })
-    
-    // Add services as separate line items
+
+    // Non-ward service charges (admission_services table)
     admissionServices.forEach(svc => {
-      items.push({ 
-        type: 'service', 
-        id: svc.id, 
-        name: svc.service_name, 
-        total: Number(svc.price || 0), 
-        billingType: svc.billing_type || 'one-off' 
+      items.push({
+        type: 'service',
+        id: svc.id,
+        name: svc.service_name,
+        total: Number(svc.price || 0),
+        billingType: svc.billing_type || 'one-off',
       })
     })
-    
+
     return items
   })()
 
@@ -435,7 +450,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
               </div>
             </div>
 
-            <div className="bg-white/80 dark:bg-white/10 backdrop-blur-sm rounded-xl p-4 space-y-1.5">
+            <div className="bg-white/70 dark:bg-white/10 backdrop-blur-sm rounded-xl p-4 space-y-1.5">
               {billingBreakdown.length === 0 ? (
                 <p className="text-[11px] text-ios-gray-2 py-1">No billing records yet</p>
               ) : billingBreakdown.map((row, i) => row.type === 'ward' ? (
@@ -483,11 +498,15 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
                 </div>
               ))}
 
-              <div className="flex items-center justify-between pt-2 mt-1 border-t border-white/20">
-                <span className="text-[11px] font-semibold text-ios-gray-1">
+              <div
+                className="my-2"
+                style={{ borderTop: `1px solid ${accentColor}40` }}
+              />
+              <div className="flex justify-between items-center pt-1">
+                <span className="text-sm font-semibold text-gray-700">
                   Total{isActive ? ' (live)' : ''}
                 </span>
-                <span className="text-[13px] font-bold tabular-nums text-gray-900 dark:text-gray-50">
+                <span className="font-bold text-base tabular-nums" style={{ color: accentColor }}>
                   KES {Math.round(grandTotal).toLocaleString()}
                 </span>
               </div>

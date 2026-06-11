@@ -8,6 +8,7 @@ export default function QRScanner({ onExtract }) {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const fileInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop())
@@ -38,21 +39,43 @@ export default function QRScanner({ onExtract }) {
     canvas.width = videoRef.current.videoWidth
     canvas.height = videoRef.current.videoHeight
     canvas.getContext('2d').drawImage(videoRef.current, 0, 0)
-    const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1]
+    const base64 = canvas.toDataURL('image/png').split(',')[1]
     stopCamera()
-    await processImage(base64, 'image/jpeg')
+    await processImage(base64, 'image/png')
+  }
+
+  function fileToBase64PNG(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        canvas.getContext('2d').drawImage(img, 0, 0)
+        const base64 = canvas.toDataURL('image/png').split(',')[1]
+        URL.revokeObjectURL(objectUrl)
+        resolve(base64)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error('Could not load image'))
+      }
+      img.src = objectUrl
+    })
   }
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
     if (!file) return
     setMode('scanning')
-    const reader = new FileReader()
-    reader.onload = async () => {
-      const b64 = reader.result.split(',')[1]
-      await processImage(b64, file.type || 'image/jpeg')
+    try {
+      const base64 = await fileToBase64PNG(file)
+      await processImage(base64, 'image/png')
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not load image')
+      setMode('error')
     }
-    reader.readAsDataURL(file)
     e.target.value = ''
   }
 
@@ -80,7 +103,6 @@ export default function QRScanner({ onExtract }) {
       <div className="space-y-3">
         <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3]">
           <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          {/* Card frame guide */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="relative w-4/5 aspect-[1.586/1]">
               <div className="absolute inset-0 border border-white/30 rounded-xl" />
@@ -152,13 +174,22 @@ export default function QRScanner({ onExtract }) {
 
   return (
     <div className="space-y-3">
+      {/* PRIMARY: native camera — opens OS camera on mobile, file picker on desktop */}
       <button
-        onClick={startCamera}
-        className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-ios-blue/10 text-ios-blue font-medium hover:bg-ios-blue/20 transition-all"
+        onClick={() => cameraInputRef.current?.click()}
+        className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-ios-blue text-white font-semibold hover:bg-blue-600 transition-all active:scale-95"
       >
         <Camera size={20} />
-        Open Camera
+        Take Photo
       </button>
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFile}
+      />
 
       <div className="flex items-center gap-3">
         <div className="flex-1 h-px bg-ios-gray-4" />
@@ -166,12 +197,22 @@ export default function QRScanner({ onExtract }) {
         <div className="flex-1 h-px bg-ios-gray-4" />
       </div>
 
+      {/* SECONDARY: live viewfinder (desktop / browser-camera) */}
+      <button
+        onClick={startCamera}
+        className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-ios-blue/10 text-ios-blue font-medium hover:bg-ios-blue/20 transition-all"
+      >
+        <Camera size={18} />
+        Open Camera
+      </button>
+
+      {/* TERTIARY: file picker */}
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl border-2 border-dashed border-ios-gray-4 text-ios-gray-1 font-medium hover:border-ios-blue/50 hover:text-ios-blue transition-all"
+        className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl border-2 border-dashed border-ios-gray-4 text-ios-gray-1 font-medium hover:border-ios-blue/50 hover:text-ios-blue transition-all"
       >
-        <Upload size={20} />
-        Upload Image
+        <Upload size={18} />
+        Choose File
       </button>
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 

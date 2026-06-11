@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowRight, ChevronDown } from 'lucide-react'
-import { transferAdmission, fetchHospitals, fetchHospitalServices } from '../../lib/api'
+import { transferPatient, fetchHospitals, fetchHospitalServices } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { formatKES } from '../../lib/utils'
 
@@ -8,9 +8,11 @@ export default function TransferModal({ admission, onClose, onSaved }) {
   const { user } = useAuth()
   const [hospitals, setHospitals] = useState([])
   const [services, setServices] = useState([])
-  const [ward, setWard] = useState(admission?.ward || '')
+  const [ward, setWard] = useState('')
   const [hospitalId, setHospitalId] = useState(admission?.hospital_id || '')
+  const [transferDate, setTransferDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   const patient = admission?.patients
 
@@ -30,14 +32,21 @@ export default function TransferModal({ admission, onClose, onSaved }) {
     setWard('')
   }
 
+  const WARD_NAMES = ['General Ward', 'HDU', 'ICU', 'High Dependency Unit', 'Intensive Care Unit', 'Private Ward', 'Semi-Private Ward', 'Isolation Ward']
+  const wardServices = services.filter(s => WARD_NAMES.includes(s.service_name))
+
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!ward) { setError('Please select a ward'); return }
     setLoading(true)
+    setError(null)
     try {
-      await transferAdmission(admission.id, ward, hospitalId || null)
+      const newHospitalId = hospitalId !== admission?.hospital_id ? hospitalId : null
+      await transferPatient(admission.id, ward, transferDate, newHospitalId)
       onSaved?.()
-    } catch (e) {
-      alert(e.message)
+    } catch (err) {
+      console.error('Transfer error:', err)
+      setError(err.message || 'Transfer failed')
     } finally {
       setLoading(false)
     }
@@ -62,24 +71,48 @@ export default function TransferModal({ admission, onClose, onSaved }) {
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Current Ward (read-only) */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">New Hospital <span className="text-ios-gray-2 font-normal">(optional)</span></label>
+            <label className="text-sm font-medium">Current Ward</label>
+            <div className="ios-input bg-gray-50 text-ios-gray-1">{admission?.ward || '—'}</div>
+          </div>
+
+          {/* New Hospital (optional) */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Hospital <span className="text-ios-gray-2 font-normal">(optional change)</span></label>
             <div className="relative">
               <select
                 value={hospitalId}
                 onChange={e => handleHospitalChange(e.target.value)}
                 className="ios-input appearance-none pr-9"
               >
-                <option value="">Same hospital</option>
                 {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
               </select>
               <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-ios-gray-1 pointer-events-none" />
             </div>
           </div>
 
+          {/* New Ward */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">New Ward</label>
-            {services.length > 0 ? (
+            {wardServices.length > 0 ? (
+              <div className="relative">
+                <select
+                  value={ward}
+                  onChange={e => setWard(e.target.value)}
+                  className="ios-input appearance-none pr-9"
+                  required
+                >
+                  <option value="">Select ward…</option>
+                  {wardServices.map(s => (
+                    <option key={s.id} value={s.service_name}>
+                      {s.service_name} — {formatKES(s.price_per_day)}/day
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-ios-gray-1 pointer-events-none" />
+              </div>
+            ) : services.length > 0 ? (
               <div className="relative">
                 <select
                   value={ward}
@@ -106,6 +139,24 @@ export default function TransferModal({ admission, onClose, onSaved }) {
               />
             )}
           </div>
+
+          {/* Transfer Date */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Transfer Date</label>
+            <input
+              type="date"
+              value={transferDate}
+              onChange={e => setTransferDate(e.target.value)}
+              className="ios-input"
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              {error}
+            </div>
+          )}
 
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose}
