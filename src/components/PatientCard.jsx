@@ -561,53 +561,95 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
         </div>
       </div>
 
-      {/* ── ACTIONS TOGGLE ──────────────────────────────────────────────────── */}
+      {/* ── Actions ── */}
       {isActive && (
-        <div className="mt-3 flex flex-col gap-2">
-          <div>
-            <button
-              onClick={() => setActionsOpen(prev => !prev)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
-            >
-              <span className="text-sm">⋯</span>
-              <span>Actions</span>
-              <span className={`transition-transform duration-200 text-[10px] ml-1 inline-block ${actionsOpen ? 'rotate-180' : ''}`}>▾</span>
-            </button>
-          </div>
+        <div className="mt-3">
+          <button
+            onClick={() => setActionsOpen(prev => !prev)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
+          >
+            <span className="tracking-widest text-gray-400">•••</span>
+            <span>Actions</span>
+            <span className={`text-[9px] transition-transform duration-300 inline-block ${actionsOpen ? 'rotate-180' : ''}`}>▾</span>
+          </button>
 
-          <div className={`transition-all duration-300 overflow-hidden ${actionsOpen ? 'max-h-[100px] opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className={`overflow-hidden transition-all duration-300 ease-out ${actionsOpen ? 'max-h-24 opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'}`}>
+            <div className={`flex items-center gap-2.5 flex-wrap transition-transform duration-300 ease-out ${actionsOpen ? 'translate-y-0' : '-translate-y-2'}`}>
+
+              {/* Transfer */}
               <button onClick={() => onTransfer?.(admission)} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 transition-colors disabled:opacity-50">
-                → Transfer
+                title="Transfer ward"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
               </button>
+
+              {/* Invoice */}
               <button onClick={() => onInvoice?.(admission)} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 transition-colors disabled:opacity-50">
-                ☰ Invoice
+                title="View invoice"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </button>
+
+              {/* Add Note */}
               <button onClick={() => onAddNotes?.(admission)} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-colors disabled:opacity-50">
-                ✎ Note
+                title="Add note"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
               </button>
+
+              {/* Add Service */}
               <button onClick={() => onAddServices?.(admission, loadServices)} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-colors disabled:opacity-50">
-                + Service
+                title="Add service"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
               </button>
-              <button onClick={admission.billing_paused ? handleResumeBilling : handlePauseBilling} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-100 transition-colors disabled:opacity-50">
-                {admission.billing_paused ? '▶ Resume' : '⏸ Pause'}
+
+              {/* Pause / Resume */}
+              <button onClick={admission.billing_paused ? handleResumeBilling : handlePauseBilling}
+                disabled={isProcessing}
+                title={admission.billing_paused ? 'Resume billing' : 'Pause billing'}
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-100 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                {admission.billing_paused ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
               </button>
+
+              {/* Discharge */}
               <button onClick={handleDischarge} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-green-50 hover:bg-green-100 text-green-600 border border-green-100 transition-colors disabled:opacity-50">
-                ✓ Discharge
+                title="Discharge patient"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 hover:bg-green-100 text-green-600 border border-green-100 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
               </button>
+
+              {/* Delete */}
               <button onClick={handleDeletePatient} disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 transition-colors disabled:opacity-50">
-                🗑 Delete
+                title="Delete record"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-500 border border-red-100 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
               </button>
+
             </div>
             {actionError && (
-              <p className="text-xs text-red-500 mt-1">{actionError}</p>
+              <p className="text-xs text-red-500 mt-2">{actionError}</p>
             )}
           </div>
         </div>
