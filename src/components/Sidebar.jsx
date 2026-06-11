@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Users, UserPlus, BarChart2, Settings, LogOut, Menu, X, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useSidebar } from '../context/SidebarContext'
 import { signOut } from '../lib/auth'
 
 const navItems = [
@@ -14,8 +15,8 @@ const navItems = [
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [userExpanded, setUserExpanded] = useState(false)
+  const { mobileOpen, setMobileOpen } = useSidebar()
   const { user } = useAuth()
   const navigate = useNavigate()
 

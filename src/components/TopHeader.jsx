@@ -1,20 +1,25 @@
 import { useState } from 'react'
 import { Bell, Menu, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useSidebar } from '../context/SidebarContext'
 import NotificationCenter from './NotificationCenter'
 
 export default function TopHeader({ title, onMenuToggle, menuOpen }) {
   const { user } = useAuth()
+  const sidebar = useSidebar()
   const [showNotifications, setShowNotifications] = useState(false)
+
+  const handleMenuToggle = onMenuToggle ?? sidebar?.toggleMobile
+  const isMenuOpen = menuOpen ?? sidebar?.mobileOpen
 
   return (
     <>
       <header className="sticky top-0 z-30 glass border-b border-white/20 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={onMenuToggle}
+          onClick={handleMenuToggle}
           className="md:hidden p-2 rounded-xl hover:bg-black/5 transition-colors"
         >
-          {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
 
         <div className="flex items-center gap-2.5 flex-1">
