@@ -26,30 +26,32 @@ function WardRow({ ward, onBlur, onRemove }) {
   const [rate, setRate] = useState(String(ward.price_per_day))
 
   return (
-    <div className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center py-2 border-b border-gray-100 last:border-0">
       <input
         value={name}
         onChange={e => setName(e.target.value)}
         onBlur={() => onBlur(name, rate)}
         placeholder="Ward name"
-        className="flex-1 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        className="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
       />
-      <input
-        value={rate}
-        onChange={e => setRate(e.target.value)}
-        onBlur={() => onBlur(name, rate)}
-        placeholder="KES/day"
-        type="number"
-        className="w-28 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
-      />
-      <button
-        onClick={onRemove}
-        className="w-7 h-7 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
+      <div className="flex gap-2 items-center flex-shrink-0">
+        <input
+          value={rate}
+          onChange={e => setRate(e.target.value)}
+          onBlur={() => onBlur(name, rate)}
+          placeholder="KES/day"
+          type="number"
+          className="w-28 px-3 py-1.5 text-sm rounded-xl border border-gray-200 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+        <button
+          onClick={onRemove}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
     </div>
   )
 }
@@ -498,17 +500,17 @@ export default function Settings() {
               const isExpanded = expandedHospitalId === hospital.id
               const isInactive = hospital.status === 'inactive'
               return (
-                <div key={hospital.id} className={`glass-card rounded-2xl overflow-hidden ${isInactive ? 'opacity-60' : ''}`}>
+                <div key={hospital.id} className={`glass-card rounded-2xl overflow-hidden w-full ${isInactive ? 'opacity-60' : ''}`}>
                   {/* Hospital header */}
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <button
                       onClick={() => handleExpandHospital(hospital.id)}
-                      className="flex-1 flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors text-left"
+                      className="flex-1 min-w-0 flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors text-left"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: hospital.color || DEFAULT_COLOR }} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                             {hospital.name}
                             {isInactive && <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded">Inactive</span>}
                           </p>
@@ -520,7 +522,7 @@ export default function Settings() {
                       </div>
                       <span className={`text-gray-400 text-xs ml-3 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
                     </button>
-                    <div className="flex gap-1 pr-3">
+                    <div className="flex gap-2 flex-shrink-0 self-start sm:self-auto px-4 pb-3 sm:px-0 sm:pb-0 sm:pr-3">
                       <button
                         onClick={() => openEditModal(hospital)}
                         className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition"

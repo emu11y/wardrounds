@@ -52,6 +52,7 @@ export default function AdmitPatient() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [toast, setToast] = useState(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   // Wards derived from selected hospital (no extra fetch — fetchHospitals includes hospital_services)
   const wards = hospitals.find(h => h.id === hospitalId)?.hospital_services || []
@@ -264,7 +265,10 @@ export default function AdmitPatient() {
   }
 
   function handleReset() {
-    if (!window.confirm('Clear all fields and start over?')) return
+    setShowResetConfirm(true)
+  }
+
+  const doReset = () => {
     setFirstName('')
     setLastName('')
     setDateOfBirth('')
@@ -280,6 +284,7 @@ export default function AdmitPatient() {
     setScanError(null)
     setScannedData(null)
     setSubmitError(null)
+    setShowResetConfirm(false)
   }
 
   return (
@@ -574,6 +579,34 @@ export default function AdmitPatient() {
           </div>
         </form>
       </div>
+
+      {showResetConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.2)' }}
+        >
+          <div className="glass-card rounded-2xl p-6 bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl w-full max-w-sm">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Clear all fields?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              This will reset the form and remove any scanned or entered data.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={doReset}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors"
+              >
+                Clear Fields
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
