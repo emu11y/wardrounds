@@ -93,7 +93,7 @@ function buildWardLines(admission) {
       // Last (current) segment: inclusive today (+1). Past segments: exclusive end (end = next segment's start).
       return isLast
         ? Math.max(1, Math.floor((t - f) / 86400000) + 1)
-        : Math.max(0, Math.floor((t - f) / 86400000))
+        : Math.max(1, Math.floor((t - f) / 86400000))
     })()
     const svc = hospitalServices.find(s => s.service_name === ward)
     const rate = Number(svc?.price_per_day ?? 0)
