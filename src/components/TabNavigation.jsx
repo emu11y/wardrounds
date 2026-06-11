@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, BarChart2, Settings } from 'lucide-react'
+import { LayoutDashboard, Users, Stethoscope, UserPlus, Settings } from 'lucide-react'
 
 const tabs = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/patients', icon: Users, label: 'Patients' },
+  { to: '/outpatient', icon: Stethoscope, label: 'Outpatient' },
   { to: '/admit', icon: UserPlus, label: 'Admit' },
-  { to: '/analytics', icon: BarChart2, label: 'Analytics' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 

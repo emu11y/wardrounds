@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, UserPlus, BarChart2, Settings, LogOut, Menu, X, ChevronDown,
+  LayoutDashboard, Users, UserPlus, Stethoscope, BarChart2, Settings, LogOut, Menu, X, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSidebar } from '../context/SidebarContext'
@@ -10,6 +10,7 @@ import { signOut } from '../lib/auth'
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/patients', icon: Users, label: 'Patients' },
+  { to: '/outpatient', icon: Stethoscope, label: 'Outpatient' },
   { to: '/admit', icon: UserPlus, label: 'Admit' },
 ]
 

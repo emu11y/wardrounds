@@ -7,6 +7,7 @@ import Patients from './pages/Patients'
 import AdmitPatient from './pages/AdmitPatient'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
+import Outpatient from './pages/Outpatient'
 import Sidebar from './components/Sidebar'
 import TabNavigation from './components/TabNavigation'
 
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
         <Route path="/patients" element={<ProtectedLayout><Patients /></ProtectedLayout>} />
         <Route path="/admit" element={<ProtectedLayout><AdmitPatient /></ProtectedLayout>} />
+        <Route path="/outpatient" element={<ProtectedLayout><Outpatient /></ProtectedLayout>} />
         <Route path="/analytics" element={<ProtectedLayout><Analytics /></ProtectedLayout>} />
         <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />

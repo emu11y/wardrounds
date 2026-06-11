@@ -859,6 +859,66 @@ export async function dischargePatient(admissionId) {
   }
 }
 
+// ─── OUTPATIENT VISITS ────────────────────────────────────────────────────────
+
+export async function fetchOutpatientVisits(teamId) {
+  const { data, error } = await supabase
+    .from('outpatient_visits')
+    .select('*, patients(id, first_name, last_name, date_of_birth)')
+    .eq('team_id', teamId)
+    .order('visit_date', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createOutpatientVisit(visitData) {
+  const { data, error } = await supabase
+    .from('outpatient_visits')
+    .insert(visitData)
+    .select('*, patients(id, first_name, last_name, date_of_birth)')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateOutpatientVisit(visitId, updates) {
+  const { error } = await supabase
+    .from('outpatient_visits')
+    .update(updates)
+    .eq('id', visitId)
+  if (error) throw error
+}
+
+export async function deleteOutpatientVisit(visitId) {
+  const { error } = await supabase.from('outpatient_visits').delete().eq('id', visitId)
+  if (error) throw error
+}
+
+export async function fetchVisitServices(visitId) {
+  const { data, error } = await supabase
+    .from('visit_services')
+    .select('*')
+    .eq('visit_id', visitId)
+    .order('added_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function addVisitService(visitId, serviceName, price) {
+  const { data, error } = await supabase
+    .from('visit_services')
+    .insert({ visit_id: visitId, service_name: serviceName, price })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteVisitService(serviceId) {
+  const { error } = await supabase.from('visit_services').delete().eq('id', serviceId)
+  if (error) throw error
+}
+
 export async function seedTestHospitals(teamId) {
   try {
     const { data: hospitals, error } = await supabase
