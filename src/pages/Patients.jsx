@@ -332,51 +332,72 @@ export default function Patients() {
                           const isActive = adm.status === 'admitted'
                           const s = getStatusBadgeStyle(adm.status)
 
+                          const wardColor = adm.ward === 'ICU' ? '#ef4444' : adm.ward === 'HDU' ? '#f97316' : '#22c55e'
+
+                          // Build itemised billing groups
+                          const hospitalSvcMap = {}
+                          ;(adm.hospitals?.hospital_services || []).forEach(hs => {
+                            hospitalSvcMap[hs.id] = { name: hs.service_name, rate: Number(hs.price_per_day) }
+                          })
+                          const billingGroups = {}
+                          billing.forEach(r => {
+                            const key = r.service_id ?? '__unknown__'
+                            if (!billingGroups[key]) billingGroups[key] = []
+                            billingGroups[key].push(r)
+                          })
+                          const billingLines = Object.entries(billingGroups).map(([key, recs]) => {
+                            const svcInfo = key !== '__unknown__' ? hospitalSvcMap[key] : null
+                            return {
+                              name: svcInfo?.name ?? adm.ward ?? 'Ward Service',
+                              rate: svcInfo?.rate ?? Number(recs[0]?.amount ?? 0),
+                              days: recs.length,
+                              total: recs.reduce((sum, r) => sum + Number(r.amount), 0),
+                            }
+                          })
+
                           return (
                             <div
                               key={adm.id}
                               className="rounded-2xl overflow-hidden border"
                               style={{ borderColor: color + '40', backgroundColor: color + '08' }}
                             >
-                              {/* Admission header row */}
+                              {/* Admission header — two-row layout, no truncation */}
                               <button
-                                className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                                className="w-full flex flex-col gap-1 p-3 text-left"
                                 onClick={() => toggleAdmissionExpand(adm.id)}
                               >
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <div
-                                    className="w-1 h-8 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                  <div className="min-w-0">
-                                    <p className="text-[12px] font-semibold text-gray-800 truncate">
-                                      {adm.hospitals?.name || 'Unknown Hospital'}
-                                    </p>
-                                    <p className="text-[10px] text-ios-gray-1">
-                                      {formatDate(adm.team_start_date || adm.admission_date)}
-                                      {adm.discharge_date ? ` → ${formatDate(adm.discharge_date)}` : isActive ? ' → Present' : ''}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
+                                {/* Row 1: ward badge · hospital · date */}
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   {adm.ward && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white"
-                                      style={{ backgroundColor: adm.ward === 'ICU' ? '#ef4444' : adm.ward === 'HDU' ? '#f97316' : '#22c55e' }}>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white flex-shrink-0"
+                                      style={{ backgroundColor: wardColor }}>
                                       {adm.ward}
                                     </span>
                                   )}
+                                  <span className="text-[12px] font-semibold text-gray-800">
+                                    {adm.hospitals?.name || 'Unknown Hospital'}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500">
+                                    · {formatDate(adm.team_start_date || adm.admission_date)}
+                                    {adm.discharge_date ? ` → ${formatDate(adm.discharge_date)}` : isActive ? ' → Present' : ''}
+                                  </span>
+                                </div>
+                                {/* Row 2: status · total · chevron */}
+                                <div className="flex items-center justify-between gap-2">
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${s.className}`}>
                                     {s.text}
                                   </span>
-                                  {grandTotal > 0 && (
-                                    <span className="text-[11px] font-bold text-gray-700">
-                                      KES {Math.round(grandTotal).toLocaleString()}
-                                    </span>
-                                  )}
-                                  <ChevronDown
-                                    size={13}
-                                    className={`text-ios-gray-1 transition-transform duration-200 ${isAdmExpanded ? 'rotate-180' : ''}`}
-                                  />
+                                  <div className="flex items-center gap-2">
+                                    {grandTotal > 0 && (
+                                      <span className="text-[11px] font-bold text-gray-700">
+                                        KES {Math.round(grandTotal).toLocaleString()}
+                                      </span>
+                                    )}
+                                    <ChevronDown
+                                      size={13}
+                                      className={`text-ios-gray-1 transition-transform duration-200 ${isAdmExpanded ? 'rotate-180' : ''}`}
+                                    />
+                                  </div>
                                 </div>
                               </button>
 
@@ -386,33 +407,43 @@ export default function Patients() {
                                   {loadingBilling[adm.id] ? (
                                     <div className="h-8 bg-ios-gray-5 rounded animate-pulse mt-2" />
                                   ) : (
-                                    <div className="mt-2 rounded-xl p-3 space-y-1.5" style={{ backgroundColor: color + '10' }}>
+                                    <div className="mt-2 rounded-xl p-3" style={{ backgroundColor: color + '10' }}>
                                       <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">
                                         Billing Breakdown
                                       </p>
-                                      {billing.length === 0 && services.length === 0 ? (
+                                      {billingLines.length === 0 && services.length === 0 ? (
                                         <p className="text-[11px] text-ios-gray-2">No billing records</p>
                                       ) : (
                                         <>
-                                          {billing.length > 0 && (
-                                            <div className="flex justify-between items-center py-1">
-                                              <span className="text-[11px] text-gray-700">Ward charges</span>
-                                              <span className="text-[11px] font-bold text-ios-blue">
-                                                KES {Math.round(wardTotal).toLocaleString()}
+                                          {billingLines.map((line, i) => (
+                                            <div key={i} className="flex items-center justify-between py-1">
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                                <span className="text-xs font-semibold text-gray-800">{line.name}</span>
+                                                <span className="text-xs text-gray-400">
+                                                  {line.days}d @ KES {Math.round(line.rate).toLocaleString()}/day
+                                                </span>
+                                              </div>
+                                              <span className="text-xs font-bold text-ios-blue ml-2 flex-shrink-0">
+                                                KES {Math.round(line.total).toLocaleString()}
                                               </span>
                                             </div>
-                                          )}
+                                          ))}
                                           {services.map(svc => (
-                                            <div key={svc.id} className="flex justify-between items-center py-0.5">
-                                              <span className="text-[11px] text-gray-700 truncate flex-1">{svc.service_name}</span>
-                                              <span className="text-[11px] font-semibold text-ios-blue ml-2">
+                                            <div key={svc.id} className="flex items-center justify-between py-1">
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                <span className="w-2 h-2 rounded-full flex-shrink-0 bg-purple-400" />
+                                                <span className="text-xs font-semibold text-gray-800">{svc.service_name}</span>
+                                                <span className="text-xs text-gray-400">(one-off)</span>
+                                              </div>
+                                              <span className="text-xs font-bold text-ios-blue ml-2 flex-shrink-0">
                                                 KES {Math.round(Number(svc.price)).toLocaleString()}
                                               </span>
                                             </div>
                                           ))}
-                                          <div className="flex justify-between items-center pt-1.5 border-t" style={{ borderColor: color + '30' }}>
-                                            <span className="text-[11px] font-bold text-gray-800">Total</span>
-                                            <span className="text-[12px] font-bold text-gray-900">
+                                          <div className="border-t mt-2 pt-2 flex justify-between items-center" style={{ borderColor: color + '40' }}>
+                                            <span className="text-xs font-semibold text-gray-600">Total</span>
+                                            <span className="text-sm font-bold" style={{ color }}>
                                               KES {Math.round(grandTotal).toLocaleString()}
                                             </span>
                                           </div>

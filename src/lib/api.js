@@ -89,7 +89,7 @@ export async function fetchAdmissionsForPatient(patientId) {
     .from('admissions')
     .select(`
       *,
-      hospitals(id, name, location, color),
+      hospitals(id, name, location, color, hospital_services(id, service_name, price_per_day)),
       timeline_events(id, event_type, ward, timestamp, notes),
       patient_notes(id, note_text, signature, created_at, users(full_name)),
       services_rendered(id, rendered_date, quantity, price_applied, hospital_services(service_name))
