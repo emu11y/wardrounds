@@ -117,6 +117,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
   const [isProcessing, setIsProcessing] = useState(false)
   const [actionError, setActionError] = useState(null)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [confirmModal, setConfirmModal] = useState(null)
 
   const { patients: patient, hospitals: hospital } = admission
 
@@ -220,18 +221,21 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
   const isActive = admission.status === 'admitted'
 
-  const handleDischarge = async () => {
-    const confirmed = window.confirm(
-      `Discharge ${patient?.first_name} ${patient?.last_name}? This will stop billing and close their admission. Their records will remain accessible in the Patients page.`
-    )
-    if (!confirmed) return
-    if (isProcessing) return
-    setIsProcessing(true)
-    setActionError(null)
-    const result = await dischargePatient(admission.id)
-    setIsProcessing(false)
-    if (result.success) { onRefresh?.() }
-    else { setActionError('Failed to discharge patient. Please try again.') }
+  const handleDischarge = () => {
+    setConfirmModal({
+      title: 'Discharge Patient',
+      message: `Discharge ${patient?.first_name} ${patient?.last_name}? This will stop billing and close their admission. Their records will remain accessible in the Patients page.`,
+      danger: false,
+      onConfirm: async () => {
+        setConfirmModal(null)
+        setIsProcessing(true)
+        setActionError(null)
+        const result = await dischargePatient(admission.id)
+        setIsProcessing(false)
+        if (result.success) { onRefresh?.() }
+        else { setActionError('Failed to discharge patient. Please try again.') }
+      },
+    })
   }
 
   async function handleDeleteService(svcId) {
@@ -274,30 +278,27 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     setIsProcessing(false)
   }
 
-  const handleDeletePatient = async () => {
-    const confirmed = window.confirm(
-      `Archive patient "${patient.first_name} ${patient.last_name}"?\n\nThis removes them from active list but preserves records.`
-    )
-    if (!confirmed) return
-
-    if (isProcessing) return
-    setIsProcessing(true)
-    setActionError(null)
-
-    const result = await deleteAdmission(admission.id)
-    if (result.success) {
-      console.log('✅ Patient archived:', patient.first_name, patient.last_name)
-      onRefresh?.()
-    } else {
-      setActionError('Failed to delete patient')
-      console.error('deleteAdmission error:', result.error)
-    }
-    setIsProcessing(false)
+  const handleDeletePatient = () => {
+    setConfirmModal({
+      title: 'Delete Record',
+      message: `Delete ${patient?.first_name} ${patient?.last_name}? This will archive their record. Use this only for test or erroneous entries.`,
+      danger: true,
+      onConfirm: async () => {
+        setConfirmModal(null)
+        setIsProcessing(true)
+        setActionError(null)
+        const result = await deleteAdmission(admission.id)
+        setIsProcessing(false)
+        if (result.success) { onRefresh?.() }
+        else { setActionError('Failed to delete record. Please try again.') }
+      },
+    })
   }
 
   const accentColor = hospital?.color || '#3B82F6'
 
   return (
+    <>
     <div
       className="glass-card hover:shadow-glass-md transition-shadow duration-200"
     >
@@ -652,5 +653,34 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
         </div>
       )}
     </div>
+
+      {confirmModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.25)' }}
+        >
+          <div className="glass-card rounded-2xl p-6 max-w-sm w-full mx-4 bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl">
+            <h3 className="text-base font-bold text-gray-900 mb-2">{confirmModal.title}</h3>
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors text-white ${
+                  confirmModal.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+                }`}
+              >
+                {confirmModal.danger ? 'Delete' : 'Discharge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

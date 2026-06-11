@@ -55,7 +55,7 @@ export default function InvoiceModal({ admission, onClose }) {
   const doctorTitle = practice?.doctor_title || 'Attending Physician'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 overflow-y-auto">
+    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backdropFilter: 'blur(12px)', backgroundColor: 'rgba(255,255,255,0.15)' }}>
 
       {/* Floating controls — hidden on print */}
       <div className="no-print fixed top-4 right-4 z-10 flex gap-2">

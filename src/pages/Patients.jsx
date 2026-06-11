@@ -139,9 +139,22 @@ export default function Patients() {
     XLSX.writeFile(wb, `wardrounds-patients-${dateStr}.xlsx`)
   }
 
+  const handleResetFilters = () => {
+    setTimeFilter(null)
+    setStatusFilter('all')
+    setQuery('')
+    setDateFrom('')
+    setDateTo('')
+  }
+
   const filtered = patients.filter(p => {
     const name = `${p.first_name} ${p.last_name}`.toLowerCase()
     if (!name.includes(query.toLowerCase())) return false
+
+    if (statusFilter !== 'all') {
+      const hasMatch = (p.admissions || []).some(a => a.status === statusFilter)
+      if (!hasMatch) return false
+    }
 
     const cutoff = getTimeFilterCutoff(timeFilter)
     if (cutoff && new Date(p.created_at) < cutoff) return false
@@ -200,6 +213,12 @@ export default function Patients() {
                 {f ?? 'All Time'}
               </button>
             ))}
+            <button
+              onClick={handleResetFilters}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 border border-gray-200 transition-colors ml-auto"
+            >
+              ↺ Reset
+            </button>
           </div>
 
           {/* Date range */}
