@@ -776,6 +776,43 @@ export async function deleteAdmissionService(id) {
   if (error) throw error
 }
 
+export async function dischargePatient(admissionId) {
+  try {
+    const today = new Date()
+    today.setUTCHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+
+    const { data: admission, error: admError } = await supabase
+      .from('admissions').select('id, hospital_id, ward, billing_paused').eq('id', admissionId).single()
+    if (admError) throw admError
+
+    if (!admission.billing_paused) {
+      const { data: service } = await supabase
+        .from('hospital_services').select('id, price_per_day')
+        .eq('hospital_id', admission.hospital_id).eq('service_name', admission.ward).eq('status', 'active').maybeSingle()
+      if (service) {
+        const { data: existing } = await supabase
+          .from('billing_records').select('id').eq('admission_id', admissionId).eq('accrual_date', todayStr).maybeSingle()
+        if (!existing) {
+          await supabase.from('billing_records').insert({
+            admission_id: admissionId, service_id: service.id,
+            accrual_date: todayStr, amount: service.price_per_day, status: 'pending',
+          })
+        }
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('admissions').update({ status: 'discharged', discharge_date: todayStr }).eq('id', admissionId)
+    if (updateError) throw updateError
+
+    return { success: true }
+  } catch (error) {
+    console.error('dischargePatient error:', error)
+    return { success: false, error }
+  }
+}
+
 export async function seedTestHospitals(teamId) {
   try {
     const { data: hospitals, error } = await supabase

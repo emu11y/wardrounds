@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   FileText, Plus, ArrowRight, Receipt, LogOut, Trash2,
-  ChevronDown, ChevronUp, Shield,
+  ChevronDown, ChevronUp, Shield, CheckCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { dischargeAdmission, deleteAdmission, pauseBilling, resumeBilling, fetchBillingRecords, fillDailyBillingGaps, fetchAdmissionServices, deleteAdmissionService } from '../lib/api'
+import { dischargePatient, deleteAdmission, pauseBilling, resumeBilling, fetchBillingRecords, fillDailyBillingGaps, fetchAdmissionServices, deleteAdmissionService } from '../lib/api'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,11 +113,10 @@ function buildWardLines(admission) {
 
 export default function PatientCard({ admission, isExpanded, isNew, onToggleExpand, onRefresh, onAddNotes, onAddServices, onTransfer, onInvoice }) {
   const { user } = useAuth()
-  const [discharging, setDischarging] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [deletingSvcId, setDeletingSvcId] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [actionError, setActionError] = useState(null)
+  const [actionsOpen, setActionsOpen] = useState(false)
 
   const { patients: patient, hospitals: hospital } = admission
 
@@ -142,6 +141,7 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
     if (!isExpanded) {
       setStayExpanded(false)
       setNotesExpanded(false)
+      setActionsOpen(false)
     }
   }, [isExpanded])
 
@@ -220,20 +220,18 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
 
   const isActive = admission.status === 'admitted'
 
-  async function handleDischarge() {
-    if (!confirm(`Discharge ${patient?.first_name} ${patient?.last_name}?`)) return
-    setDischarging(true)
-    try { await dischargeAdmission(admission.id); onRefresh?.() }
-    catch (e) { alert(e.message) }
-    finally { setDischarging(false) }
-  }
-
-  async function handleDelete() {
-    if (!confirm('Delete this admission permanently? This cannot be undone.')) return
-    setDeleting(true)
-    try { await deleteAdmission(admission.id); onRefresh?.() }
-    catch (e) { alert(e.message) }
-    finally { setDeleting(false) }
+  const handleDischarge = async () => {
+    const confirmed = window.confirm(
+      `Discharge ${patient?.first_name} ${patient?.last_name}? This will stop billing and close their admission. Their records will remain accessible in the Patients page.`
+    )
+    if (!confirmed) return
+    if (isProcessing) return
+    setIsProcessing(true)
+    setActionError(null)
+    const result = await dischargePatient(admission.id)
+    setIsProcessing(false)
+    if (result.success) { onRefresh?.() }
+    else { setActionError('Failed to discharge patient. Please try again.') }
   }
 
   async function handleDeleteService(svcId) {
@@ -563,69 +561,54 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
         </div>
       </div>
 
-      {/* ── ACTION BUTTONS ──────────────────────────────────────────────────── */}
+      {/* ── ACTIONS TOGGLE ──────────────────────────────────────────────────── */}
       {isActive && (
-        <div className="mt-4">
-          {actionError && (
-            <p className="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded mb-2">
-              {actionError}
-            </p>
-          )}
-          <div className="p-3 bg-white/50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl backdrop-blur-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onTransfer?.(admission)}
-                disabled={isProcessing}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-ios-blue/10 dark:hover:bg-ios-blue/20 text-ios-blue font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-              >
-                <ArrowRight size={13} /> Transfer
+        <div className="mt-3 flex flex-col gap-2">
+          <div>
+            <button
+              onClick={() => setActionsOpen(prev => !prev)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
+            >
+              <span className="text-sm">⋯</span>
+              <span>Actions</span>
+              <span className={`transition-transform duration-200 text-[10px] ml-1 inline-block ${actionsOpen ? 'rotate-180' : ''}`}>▾</span>
+            </button>
+          </div>
+
+          <div className={`transition-all duration-300 overflow-hidden ${actionsOpen ? 'max-h-[100px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => onTransfer?.(admission)} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 transition-colors disabled:opacity-50">
+                → Transfer
               </button>
-              <button
-                onClick={() => onInvoice?.(admission)}
-                disabled={isProcessing}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-ios-blue/10 dark:hover:bg-ios-blue/20 text-ios-blue font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-              >
-                <Receipt size={13} /> Invoice
+              <button onClick={() => onInvoice?.(admission)} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 transition-colors disabled:opacity-50">
+                ☰ Invoice
               </button>
-              <button
-                onClick={() => onAddNotes?.(admission)}
-                disabled={isProcessing}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-              >
-                <FileText size={13} /> Add Note
+              <button onClick={() => onAddNotes?.(admission)} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-colors disabled:opacity-50">
+                ✎ Note
               </button>
-              <button
-                onClick={() => onAddServices?.(admission, loadServices)}
-                disabled={isProcessing}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-              >
-                <Plus size={13} /> Service
+              <button onClick={() => onAddServices?.(admission, loadServices)} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-colors disabled:opacity-50">
+                + Service
               </button>
-              {admission.billing_paused ? (
-                <button
-                  onClick={handleResumeBilling}
-                  disabled={isProcessing}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-50 hover:bg-green-100 dark:bg-ios-green/10 dark:hover:bg-ios-green/20 text-ios-green font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-                >
-                  <LogOut size={13} /> {isProcessing ? '…' : 'Resume'}
-                </button>
-              ) : (
-                <button
-                  onClick={handlePauseBilling}
-                  disabled={isProcessing}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-ios-orange/10 dark:hover:bg-ios-orange/20 text-ios-orange font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-                >
-                  <LogOut size={13} /> {isProcessing ? '…' : 'Pause'}
-                </button>
-              )}
-              <button
-                onClick={handleDeletePatient}
-                disabled={isProcessing}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-red-50 hover:bg-red-100 dark:bg-ios-red/10 dark:hover:bg-ios-red/20 text-ios-red font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 active:scale-95"
-              >
-                <Trash2 size={13} /> {isProcessing ? '…' : 'Delete'}
+              <button onClick={admission.billing_paused ? handleResumeBilling : handlePauseBilling} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-100 transition-colors disabled:opacity-50">
+                {admission.billing_paused ? '▶ Resume' : '⏸ Pause'}
+              </button>
+              <button onClick={handleDischarge} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-green-50 hover:bg-green-100 text-green-600 border border-green-100 transition-colors disabled:opacity-50">
+                ✓ Discharge
+              </button>
+              <button onClick={handleDeletePatient} disabled={isProcessing}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 transition-colors disabled:opacity-50">
+                🗑 Delete
               </button>
             </div>
+            {actionError && (
+              <p className="text-xs text-red-500 mt-1">{actionError}</p>
+            )}
           </div>
         </div>
       )}
