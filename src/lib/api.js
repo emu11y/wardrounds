@@ -370,10 +370,10 @@ export async function fetchHospitalServices(hospitalId) {
 export async function fetchHospitalWards(hospitalId) {
   const { data, error } = await supabase
     .from('hospital_services')
-    .select('id, service_name, price_per_day, status')
+    .select('id, service_name, price_per_day')
     .eq('hospital_id', hospitalId)
     .eq('service_type', 'ward')
-    .eq('status', 'active')
+    .order('created_at', { ascending: true })
   if (error) throw error
   return data || []
 }
@@ -386,7 +386,6 @@ export async function addHospitalWard(hospitalId, serviceName, pricePerDay) {
       service_name: serviceName,
       price_per_day: pricePerDay,
       service_type: 'ward',
-      status: 'active',
     })
     .select()
     .single()
@@ -408,7 +407,7 @@ export async function updateHospitalWard(wardId, serviceName, pricePerDay) {
 export async function deleteHospitalWard(wardId) {
   const { error } = await supabase
     .from('hospital_services')
-    .update({ status: 'inactive' })
+    .delete()
     .eq('id', wardId)
   if (error) throw error
   return { success: true }
