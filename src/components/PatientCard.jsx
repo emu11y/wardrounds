@@ -324,6 +324,12 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
             <p className="text-[11px] text-ios-gray-1 mt-0.5">
               #{admission.patient_hospital_id || shortId}
             </p>
+            {patient?.date_of_birth && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {age !== null ? `${age} yrs · ` : ''}
+                {new Date(patient.date_of_birth).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            )}
           </div>
         </div>
 
