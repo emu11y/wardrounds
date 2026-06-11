@@ -82,16 +82,6 @@ export default function Settings() {
     if (!user?.team_id) return
     const data = await getHospitalsByTeam(user.team_id)
     setHospitals(data)
-    const init = {}
-    for (const h of data) {
-      init[h.id] = { 'General Ward': '', HDU: '', ICU: '' }
-      for (const svc of (h.hospital_services || [])) {
-        if (svc.service_name in init[h.id]) {
-          init[h.id][svc.service_name] = String(svc.price_per_day ?? '')
-        }
-      }
-    }
-    setRates(init)
   }
 
   const loadServices = async () => {
@@ -146,6 +136,23 @@ export default function Settings() {
     loadPractice()
     loadServices()
   }, [user?.team_id])
+
+  useEffect(() => {
+    if (hospitals.length === 0) return
+    const loadAllWards = async () => {
+      const entries = await Promise.all(
+        hospitals.map(async h => {
+          const wards = await fetchHospitalWards(h.id)
+          return [h.id, wards]
+        })
+      )
+      setHospitalWards(Object.fromEntries(entries))
+    }
+    loadAllWards()
+  }, [hospitals])
+
+  const [wardModal, setWardModal] = useState(null)
+  const [confirmModal, setConfirmModal] = useState(null)
 
   const openAddModal = () => {
     setEditingHospital(null)
@@ -208,44 +215,52 @@ export default function Settings() {
     setSaving(false)
   }
 
-  const handleToggleStatus = async (hospital) => {
+  const handleToggleStatus = (hospital) => {
     const isActive = hospital.status !== 'inactive'
-    if (isActive && !window.confirm(`Deactivate "${hospital.name}"? It will be hidden from new admissions.`)) return
-    try {
-      await setHospitalStatus(hospital.id, isActive ? 'inactive' : 'active')
-      loadHospitals()
-    } catch (err) {
-      alert('Failed to update hospital status: ' + err.message)
-    }
-  }
-
-  const handleExpandHospital = async (hospitalId) => {
-    if (expandedHospitalId === hospitalId) {
-      setExpandedHospitalId(null)
+    if (!isActive) {
+      setHospitalStatus(hospital.id, 'active').then(loadHospitals).catch(console.error)
       return
     }
-    setExpandedHospitalId(hospitalId)
-    if (!hospitalWards[hospitalId]) {
-      const wards = await fetchHospitalWards(hospitalId)
-      setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
-    }
+    setConfirmModal({
+      title: `Deactivate ${hospital.name}?`,
+      message: 'It will be hidden from new admissions.',
+      confirmLabel: 'Deactivate',
+      onConfirm: async () => {
+        await setHospitalStatus(hospital.id, 'inactive')
+        setConfirmModal(null)
+        loadHospitals()
+      },
+    })
   }
 
-  const handleAddWard = async (hospitalId) => {
-    const name = prompt('Ward name (e.g. General Ward, ICU, Maternity):')
-    if (!name?.trim()) return
-    const rate = prompt('KES per day:')
-    if (!rate || isNaN(Number(rate))) return
-    await addHospitalWard(hospitalId, name.trim(), Number(rate))
-    const wards = await fetchHospitalWards(hospitalId)
-    setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
+  const handleExpandHospital = (hospitalId) => {
+    setExpandedHospitalId(prev => prev === hospitalId ? null : hospitalId)
   }
 
-  const handleRemoveWard = async (hospitalId, wardId) => {
-    if (!window.confirm('Remove this ward?')) return
-    await deleteHospitalWard(wardId)
-    const wards = await fetchHospitalWards(hospitalId)
-    setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
+  const handleAddWard = (hospitalId) => {
+    setWardModal({ hospitalId, name: '', rate: '' })
+  }
+
+  const handleWardModalSave = async () => {
+    if (!wardModal.name.trim() || !wardModal.rate) return
+    await addHospitalWard(wardModal.hospitalId, wardModal.name.trim(), Number(wardModal.rate))
+    const wards = await fetchHospitalWards(wardModal.hospitalId)
+    setHospitalWards(prev => ({ ...prev, [wardModal.hospitalId]: wards }))
+    setWardModal(null)
+  }
+
+  const handleRemoveWard = (hospitalId, wardId) => {
+    setConfirmModal({
+      title: 'Remove Ward',
+      message: 'Are you sure you want to remove this ward?',
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
+        await deleteHospitalWard(wardId)
+        const wards = await fetchHospitalWards(hospitalId)
+        setHospitalWards(prev => ({ ...prev, [hospitalId]: wards }))
+        setConfirmModal(null)
+      },
+    })
   }
 
   const handleWardBlur = async (hospitalId, wardId, newName, newRate) => {
@@ -312,14 +327,21 @@ export default function Settings() {
     }
   }
 
-  const handleDeleteService = async (svc) => {
-    if (!window.confirm(`Delete "${svc.service_name}"? This cannot be undone.`)) return
-    try {
-      await deleteTeamService(svc.id)
-      loadServices()
-    } catch (err) {
-      alert('Failed to delete service: ' + err.message)
-    }
+  const handleDeleteService = (svc) => {
+    setConfirmModal({
+      title: `Delete "${svc.service_name}"?`,
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await deleteTeamService(svc.id)
+          loadServices()
+        } catch (err) {
+          console.error('Failed to delete service:', err)
+        }
+        setConfirmModal(null)
+      },
+    })
   }
 
   return (
@@ -835,6 +857,78 @@ export default function Settings() {
           </div>
         </div>
       ) : null}
+
+      {/* ── Ward Add Modal ───────────────────────────────────────────────────── */}
+      {wardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+          <div className="glass-card rounded-2xl p-6 max-w-sm w-full bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl">
+            <h3 className="text-base font-bold text-gray-900 mb-4">Add Ward</h3>
+            <div className="space-y-3 mb-6">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Ward Name</label>
+                <input
+                  autoFocus
+                  value={wardModal.name}
+                  onChange={e => setWardModal(p => ({ ...p, name: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && document.getElementById('ward-rate-input').focus()}
+                  placeholder="e.g. General Ward, ICU, Maternity"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Rate (KES per day)</label>
+                <input
+                  id="ward-rate-input"
+                  type="number"
+                  value={wardModal.rate}
+                  onChange={e => setWardModal(p => ({ ...p, rate: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && handleWardModalSave()}
+                  placeholder="e.g. 6000"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setWardModal(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleWardModalSave}
+                disabled={!wardModal.name.trim() || !wardModal.rate}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-500 hover:bg-blue-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                Add Ward
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm Modal ────────────────────────────────────────────────────── */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+          <div className="glass-card rounded-2xl p-6 max-w-sm w-full bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl">
+            <h3 className="text-base font-bold text-gray-900 mb-2">{confirmModal.title}</h3>
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors">
+                {confirmModal.confirmLabel || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
     </div>
   )
