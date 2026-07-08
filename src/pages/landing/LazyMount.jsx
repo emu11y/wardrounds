@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 // dozen framer-motion sections at once — which is what blocked all interaction (e.g.
 // opening the menu) during load on mobile. A spacer of `minHeight` preserves the
 // scroll position until the real section mounts.
-export default function LazyMount({ children, minHeight = 640, rootMargin = '600px' }) {
+export default function LazyMount({ children, minHeight = 640, rootMargin = '1200px' }) {
   const ref = useRef(null)
   const [show, setShow] = useState(false)
 

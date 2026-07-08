@@ -29,6 +29,30 @@ export default function Landing() {
     setAuthOpen(true)
   }
 
+  // The app is light-themed (body background is light), but the landing is dark. While
+  // the landing is mounted, paint <html>/<body> dark so overscroll, lazy-mount spacers,
+  // and any gaps never flash the white body — and clip horizontal overflow so the
+  // Testimonials carousel track (wider than the viewport) can't shift the page sideways.
+  // Everything is restored on unmount, so the signed-in app keeps its light theme.
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prev = {
+      htmlBg: html.style.background, bodyBg: body.style.background,
+      htmlOverflowX: html.style.overflowX, bodyOverflowX: body.style.overflowX,
+    }
+    html.style.background = '#020617'
+    body.style.background = '#020617'
+    html.style.overflowX = 'hidden'
+    body.style.overflowX = 'hidden'
+    return () => {
+      html.style.background = prev.htmlBg
+      body.style.background = prev.bodyBg
+      html.style.overflowX = prev.htmlOverflowX
+      body.style.overflowX = prev.bodyOverflowX
+    }
+  }, [])
+
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     // Skip Lenis on touch / coarse-pointer devices (phones, tablets). Its continuous
