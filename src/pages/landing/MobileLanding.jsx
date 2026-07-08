@@ -50,22 +50,32 @@ export default function MobileLanding() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* Nav */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-800 bg-slate-950 px-5 py-3">
-        <div className="flex items-center gap-2">
-          <img src="/wardrounds-icon.png" className="h-7 w-7 object-contain" alt="WardRounds" />
-          <span className="text-base font-bold tracking-tight">WardRounds</span>
-        </div>
-        <button
-          onClick={() => openAuth('signin')}
-          className="rounded-full border border-slate-700 px-4 py-1.5 text-sm font-semibold text-slate-200"
-        >
-          Sign In
-        </button>
+      {/* Floating glass header (static — no animation) */}
+      <header className="fixed inset-x-0 top-3 z-50 px-4">
+        <nav className="mx-auto flex max-w-xl items-center justify-between gap-2 rounded-full border border-white/10 bg-slate-900/70 py-2 pl-3 pr-2 shadow-lg shadow-black/30 backdrop-blur-md">
+          <div className="flex min-w-0 items-center gap-2">
+            <img src="/wardrounds-icon.png" className="h-7 w-7 flex-shrink-0 object-contain" alt="WardRounds" />
+            <span className="truncate text-base font-bold tracking-tight">WardRounds</span>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-1">
+            <button
+              onClick={() => openAuth('signin')}
+              className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-200 active:text-white"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => openAuth('signup')}
+              className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-900 active:opacity-90"
+            >
+              Sign Up
+            </button>
+          </div>
+        </nav>
       </header>
 
-      {/* Hero */}
-      <section className="px-5 pt-14 pb-16 text-center">
+      {/* Hero (pt clears the floating header) */}
+      <section className="px-5 pt-28 pb-16 text-center">
         <h1 className="text-4xl font-bold leading-tight tracking-tight">
           Never lose another{' '}
           <span className="text-[#007AFF]">ward round</span>.
@@ -174,8 +184,18 @@ export default function MobileLanding() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800 px-5 py-8 text-center text-sm text-slate-500">
-        <p>© {new Date().getFullYear()} WardRounds. Built for doctors, not hospitals.</p>
+      <footer className="border-t border-slate-800 px-5 py-10">
+        <div className="flex items-center gap-2">
+          <img src="/wardrounds-icon.png" className="h-8 w-8 object-contain" alt="WardRounds" />
+          <span className="text-lg font-bold tracking-tight text-white">WardRounds</span>
+        </div>
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">
+          Your personal billing and practice record — every patient, procedure, and shilling across
+          every hospital you work in, captured at the bedside and yours alone.
+        </p>
+        <p className="mt-6 text-xs text-slate-500">
+          © {new Date().getFullYear()} WardRounds. Built for doctors, not hospitals.
+        </p>
       </footer>
 
       <AuthModal open={authOpen} mode={authMode} onModeChange={setAuthMode} onClose={() => setAuthOpen(false)} />
