@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../context/AuthContext'
 import { GLASS_CARD } from '../lib/theme'
 
 export default function AuthCallback() {
@@ -9,6 +10,7 @@ export default function AuthCallback() {
   const fullName = searchParams.get('name') || ''
 
   const navigate = useNavigate()
+  const { refreshUser } = useAuth()
   const [status, setStatus] = useState('Completing your setup...')
   const [error, setError] = useState('')
 
@@ -85,6 +87,11 @@ export default function AuthCallback() {
           console.warn('Profile not fully reconciled — user can still access app')
         }
 
+        // Reload the AuthContext profile so the just-promoted admin role + team are
+        // live immediately. Without this the app keeps the pre-promotion "member"
+        // snapshot loaded on this page, forcing a log out / back in to see admin.
+        await refreshUser()
+
         setStatus('All done! Redirecting...')
         setTimeout(() => navigate('/', { replace: true }), 800)
       } catch (err) {
@@ -94,6 +101,9 @@ export default function AuthCallback() {
     }
 
     handleCallback()
+    // refreshUser is intentionally omitted — this effect must run exactly once for
+    // onboarding; adding an unstable callback ref here would risk re-creating the team.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, practiceName, fullName])
 
   if (!practiceName) {
