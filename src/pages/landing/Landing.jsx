@@ -12,6 +12,7 @@ import FAQ from './FAQ'
 import FinalCTA from './FinalCTA'
 import Footer from './Footer'
 import AuthModal from './AuthModal'
+import LazyMount from './LazyMount'
 
 export default function Landing() {
   const [authMode, setAuthMode] = useState('signin')
@@ -57,17 +58,20 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-slate-950">
+      {/* Nav + Hero mount immediately (above the fold). Everything below mounts only
+          as it nears the viewport, so the page is interactive during load instead of
+          blocking on a synchronous mount of every framer-motion section at once. */}
       <LandingNav openAuth={openAuth} lenisRef={lenisRef} />
       <Hero openAuth={openAuth} />
-      <WhatIsWardRounds />
-      <HowItWorks />
-      <FeatureBlocks />
-      <ExportShowcase />
-      <AnalyticsShowcase />
-      <Testimonials />
-      <FAQ openAuth={openAuth} />
-      <FinalCTA openAuth={openAuth} />
-      <Footer openAuth={openAuth} lenisRef={lenisRef} />
+      <LazyMount><WhatIsWardRounds /></LazyMount>
+      <LazyMount><HowItWorks /></LazyMount>
+      <LazyMount><FeatureBlocks /></LazyMount>
+      <LazyMount><ExportShowcase /></LazyMount>
+      <LazyMount><AnalyticsShowcase /></LazyMount>
+      <LazyMount><Testimonials /></LazyMount>
+      <LazyMount><FAQ openAuth={openAuth} /></LazyMount>
+      <LazyMount><FinalCTA openAuth={openAuth} /></LazyMount>
+      <LazyMount minHeight={240}><Footer openAuth={openAuth} lenisRef={lenisRef} /></LazyMount>
       <AuthModal open={authOpen} mode={authMode} onModeChange={setAuthMode} onClose={() => setAuthOpen(false)} />
     </div>
   )
