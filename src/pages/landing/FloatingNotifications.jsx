@@ -19,21 +19,25 @@ function randomOffset() {
 }
 
 export default function FloatingNotifications() {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  // On touch / coarse-pointer devices (phones, tablets) OR when the user prefers
+  // reduced motion, render the static fallback. The animated version continuously
+  // spawns moving backdrop-blur pills, which is extremely expensive to composite on
+  // mobile GPUs and is a primary cause of the landing-page lag there.
+  const [reduceEffects, setReduceEffects] = useState(false)
   const [active, setActive] = useState([])
   const cursorRef = useRef(0)
   const idRef = useRef(0)
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    setPrefersReducedMotion(mq.matches)
-    const onChange = () => setPrefersReducedMotion(mq.matches)
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce), (hover: none), (pointer: coarse)')
+    setReduceEffects(mq.matches)
+    const onChange = () => setReduceEffects(mq.matches)
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
   useEffect(() => {
-    if (prefersReducedMotion) return
+    if (reduceEffects) return
 
     const interval = setInterval(() => {
       const notif = NOTIFICATIONS[cursorRef.current % NOTIFICATIONS.length]
@@ -46,9 +50,9 @@ export default function FloatingNotifications() {
     }, SPAWN_INTERVAL_MS)
 
     return () => clearInterval(interval)
-  }, [prefersReducedMotion])
+  }, [reduceEffects])
 
-  if (prefersReducedMotion) {
+  if (reduceEffects) {
     return (
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {NOTIFICATIONS.slice(0, 3).map((n, i) => (

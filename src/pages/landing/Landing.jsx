@@ -25,7 +25,12 @@ export default function Landing() {
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) return
+    // Skip Lenis on touch / coarse-pointer devices (phones, tablets). Its continuous
+    // rAF loop + scroll syncing is a major cause of mobile jank, and native touch
+    // scrolling is already smooth there. Anchor links fall back to native smooth
+    // scroll via scrollToHash. Desktop keeps the smooth-scroll experience.
+    const isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches
+    if (prefersReducedMotion || isTouch) return
 
     const lenis = new Lenis({ duration: 1.1, smoothWheel: true })
     lenisRef.current = lenis
