@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 
 const TOUR_STEPS = [
   {
@@ -8,7 +8,7 @@ const TOUR_STEPS = [
     title: 'Step 1 of 5 — Practice Details',
     body: 'Fill in your clinic name, doctor name, and contact info. This appears on all invoices.',
     position: 'bottom',
-    route: '/settings',
+    tab: 'billing',
   },
   {
     id: 'hospital',
@@ -16,7 +16,7 @@ const TOUR_STEPS = [
     title: 'Step 2 of 5 — Add a Hospital',
     body: 'Click "+ Add Hospital" to register the facility where you admit patients.',
     position: 'left',
-    route: '/settings',
+    tab: 'billing',
   },
   {
     id: 'ward',
@@ -24,7 +24,7 @@ const TOUR_STEPS = [
     title: 'Step 3 of 5 — Add a Ward',
     body: 'After adding a hospital, add wards with their daily billing rates (KES/day).',
     position: 'top',
-    route: '/settings',
+    tab: 'billing',
   },
   {
     id: 'services',
@@ -32,7 +32,7 @@ const TOUR_STEPS = [
     title: 'Step 4 of 5 — Add Services',
     body: 'Add clinical services you charge for — consultations, procedures, labs, and more.',
     position: 'top',
-    route: '/settings',
+    tab: 'billing',
   },
   {
     id: 'team',
@@ -40,76 +40,94 @@ const TOUR_STEPS = [
     title: 'Step 5 of 5 — Invite Your Team',
     body: 'Invite nurses, associate doctors, accountants, and cashiers to join your practice.',
     position: 'left',
-    route: '/settings',
+    tab: 'admin',
   },
 ]
 
 export default function TooltipTour({ onComplete }) {
   const [step, setStep] = useState(0)
   const [pos, setPos] = useState({ top: 0, left: 0 })
+  const [placed, setPlaced] = useState(false)
   const tooltipRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const current = TOUR_STEPS[step]
 
-  // Navigate to the correct route for this step
+  // Bring the Settings page + correct tab into view for this step. Steps 1-4 live on
+  // the Billing tab; step 5 (Invite Team) only mounts on the Admin tab — without
+  // switching tabs its target never exists and the tooltip lands in dead space.
   useEffect(() => {
-    if (location.pathname !== current.route) {
-      navigate(current.route)
+    if (location.pathname !== '/settings') {
+      navigate(`/settings?tab=${current.tab}`)
+      return
     }
+    const activeTab = searchParams.get('tab') || 'billing'
+    if (activeTab !== current.tab) setSearchParams({ tab: current.tab })
   }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Position tooltip relative to target element
+  // Scroll the step's target into view, highlight it, and anchor the tooltip to it.
   useEffect(() => {
-    function position() {
+    setPlaced(false)
+    let cancelled = false
+
+    function place() {
       const target = document.getElementById(current.targetId)
       const tooltip = tooltipRef.current
       if (!target || !tooltip) return
-
       const tr = target.getBoundingClientRect()
       const tt = tooltip.getBoundingClientRect()
       const gap = 12
-
       let top, left
       switch (current.position) {
-        case 'bottom':
-          top  = tr.bottom + gap
-          left = tr.left + tr.width / 2 - tt.width / 2
-          break
-        case 'top':
-          top  = tr.top - tt.height - gap
-          left = tr.left + tr.width / 2 - tt.width / 2
-          break
-        case 'left':
-          top  = tr.top + tr.height / 2 - tt.height / 2
-          left = tr.left - tt.width - gap
-          break
-        case 'right':
-          top  = tr.top + tr.height / 2 - tt.height / 2
-          left = tr.right + gap
-          break
-        default:
-          top  = tr.bottom + gap
-          left = tr.left
+        case 'bottom': top = tr.bottom + gap;                        left = tr.left + tr.width / 2 - tt.width / 2; break
+        case 'top':    top = tr.top - tt.height - gap;               left = tr.left + tr.width / 2 - tt.width / 2; break
+        case 'left':   top = tr.top + tr.height / 2 - tt.height / 2; left = tr.left - tt.width - gap;             break
+        case 'right':  top = tr.top + tr.height / 2 - tt.height / 2; left = tr.right + gap;                       break
+        default:       top = tr.bottom + gap;                        left = tr.left
       }
-
-      // Clamp to viewport
       left = Math.max(8, Math.min(left, window.innerWidth  - tt.width  - 8))
       top  = Math.max(8, Math.min(top,  window.innerHeight - tt.height - 8))
-
       setPos({ top, left })
+      setPlaced(true)
     }
 
-    // Retry positioning — target may not be mounted yet after route change
-    const t1 = setTimeout(position, 100)
-    const t2 = setTimeout(position, 400)
-    window.addEventListener('resize', position)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-      window.removeEventListener('resize', position)
+    function setHighlight(on) {
+      const target = document.getElementById(current.targetId)
+      if (!target) return
+      target.style.boxShadow = on ? '0 0 0 3px #007AFF' : ''
+      target.style.transition = 'box-shadow 0.2s ease'
+      target.style.scrollMarginTop = on ? '96px' : ''
     }
-  }, [step, current])
+
+    // The target may not be mounted yet while the tab/route switches — poll for it,
+    // then scroll it into view, highlight it, and place the tooltip beside it.
+    let tries = 0
+    const finder = setInterval(() => {
+      if (cancelled) return
+      const target = document.getElementById(current.targetId)
+      if (target) {
+        clearInterval(finder)
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlight(true)
+        setTimeout(place, 300)
+        setTimeout(place, 650)
+      } else if (++tries > 60) {
+        clearInterval(finder)
+      }
+    }, 50)
+
+    // Keep the tooltip glued to the target as the page scrolls or resizes.
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      cancelled = true
+      clearInterval(finder)
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+      setHighlight(false)
+    }
+  }, [step, current]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleNext() {
     if (step < TOUR_STEPS.length - 1) {
@@ -128,7 +146,12 @@ export default function TooltipTour({ onComplete }) {
       <div
         ref={tooltipRef}
         className="fixed z-50 w-72 bg-white/95 backdrop-blur-xl border border-white/60 rounded-2xl shadow-2xl p-5"
-        style={{ top: pos.top, left: pos.left }}
+        style={{
+          top: pos.top,
+          left: pos.left,
+          opacity: placed ? 1 : 0,
+          transition: 'opacity 0.2s ease, top 0.25s ease, left 0.25s ease',
+        }}
       >
         {/* Step badge + skip */}
         <div className="flex items-center justify-between mb-3">
