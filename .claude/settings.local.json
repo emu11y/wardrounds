@@ -26,7 +26,13 @@
       "Bash(pkill -f vite)",
       "Bash(nohup npm run dev)",
       "Bash(supabase db *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(grep -nE \"sk-ant-[a-zA-Z0-9]{10,}|eyJhbGciOi\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(git branch *)"
     ]
   }
 }

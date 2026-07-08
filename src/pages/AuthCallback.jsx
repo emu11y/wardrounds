@@ -35,11 +35,15 @@ export default function AuthCallback() {
 
         setStatus('Creating your practice...')
 
-        const { data: team, error: teamError } = await supabase
+        // Generate the team id client-side so we never have to read it back with
+        // `.select()`. The `teams_select` RLS policy is `id = current_user_team_id()`,
+        // but at this moment the user isn't linked to the team yet, so a RETURNING
+        // row would be filtered out (empty → `.single()` error). Knowing the id up
+        // front lets us insert, then link the user, without any filtered read.
+        const teamId = crypto.randomUUID()
+        const { error: teamError } = await supabase
           .from('teams')
-          .insert({ name: practiceName })
-          .select()
-          .single()
+          .insert({ id: teamId, name: practiceName })
         if (teamError) throw new Error('Error creating practice: ' + teamError.message)
 
         setStatus('Setting up your account...')
@@ -61,7 +65,7 @@ export default function AuthCallback() {
           // Row exists — update it
           const { error: updateError } = await supabase
             .from('users')
-            .update({ role: 'admin', team_id: team.id, full_name: fullName })
+            .update({ role: 'admin', team_id: teamId, full_name: fullName })
             .eq('id', userId)
 
           if (!updateError) {
@@ -70,7 +74,7 @@ export default function AuthCallback() {
               .select('role, team_id')
               .eq('id', userId)
               .maybeSingle()
-            if (check?.role === 'admin' && check?.team_id === team.id) {
+            if (check?.role === 'admin' && check?.team_id === teamId) {
               updated = true
               break
             }

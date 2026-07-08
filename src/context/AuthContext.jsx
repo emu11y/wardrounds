@@ -14,9 +14,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // Force re-login on every page refresh by wiping Supabase session from localStorage.
-    // Exempt /reset-password — the PASSWORD_RECOVERY token arrives via URL hash and
-    // needs the Supabase client to process it before the session is established.
-    if (!window.location.pathname.startsWith('/reset-password')) {
+    // Exempt the URL-token auth flows: /reset-password (PASSWORD_RECOVERY hash token)
+    // and /auth/callback (email-confirmation redirect). These flows receive their token
+    // via the URL and need the Supabase client to keep the just-established session so
+    // the follow-up onboarding writes run as `authenticated` — wiping it mid-flow makes
+    // them run as `anon`, which RLS denies.
+    const AUTH_URL_FLOW_PATHS = ['/reset-password', '/auth/callback']
+    if (!AUTH_URL_FLOW_PATHS.some(p => window.location.pathname.startsWith(p))) {
       Object.keys(localStorage)
         .filter(k => k.startsWith('sb-'))
         .forEach(k => localStorage.removeItem(k))
