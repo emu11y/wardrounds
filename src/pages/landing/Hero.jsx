@@ -13,14 +13,15 @@ const BARS = [40, 65, 50, 80, 60, 95, 70]
 export default function Hero({ openAuth }) {
   return (
     <section className="relative min-h-screen overflow-hidden bg-slate-950 pt-32 pb-20">
-      {/* Ambient glows */}
+      {/* Ambient glows — radial gradients instead of filter:blur(120px), which is
+          extremely expensive to paint on mobile GPUs. Same soft-glow look, ~zero cost. */}
       <div
-        className="pointer-events-none absolute -top-40 -left-40 h-[36rem] w-[36rem] rounded-full blur-[120px]"
-        style={{ backgroundColor: 'rgba(0, 122, 255, 0.15)' }}
+        className="pointer-events-none absolute -top-40 -left-40 h-[36rem] w-[36rem] rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(0,122,255,0.15) 0%, rgba(0,122,255,0) 70%)' }}
       />
       <div
-        className="pointer-events-none absolute top-20 -right-40 h-[36rem] w-[36rem] rounded-full blur-[120px]"
-        style={{ backgroundColor: 'rgba(139, 92, 246, 0.10)' }}
+        className="pointer-events-none absolute top-20 -right-40 h-[36rem] w-[36rem] rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.10) 0%, rgba(139,92,246,0) 70%)' }}
       />
 
       <motion.div
@@ -66,11 +67,9 @@ export default function Hero({ openAuth }) {
           variants={fadeRise}
           className="relative mt-20 w-full max-w-3xl"
         >
-          <motion.div
-            animate={{ y: [-8, 8, -8] }}
-            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-            className="relative rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl"
-          >
+          {/* Static (no infinite float): moving a backdrop-blur element re-computes the
+              blur every frame — a continuous GPU cost above the fold on mobile. */}
+          <div className="relative rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/40 backdrop-blur-xl">
             <FloatingNotifications />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -84,7 +83,7 @@ export default function Hero({ openAuth }) {
             </div>
 
             <BarChart bars={BARS} className="mt-6" />
-          </motion.div>
+          </div>
         </motion.div>
       </motion.div>
     </section>

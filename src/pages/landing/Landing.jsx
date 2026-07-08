@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Lenis from 'lenis'
 import LandingNav from './LandingNav'
 import Hero from './Hero'
-import WhatIsWardRounds from './WhatIsWardRounds'
-import HowItWorks from './HowItWorks'
-import FeatureBlocks from './FeatureBlocks'
-import ExportShowcase from './ExportShowcase'
-import AnalyticsShowcase from './AnalyticsShowcase'
-import Testimonials from './Testimonials'
-import FAQ from './FAQ'
-import FinalCTA from './FinalCTA'
-import Footer from './Footer'
 import AuthModal from './AuthModal'
 import LazyMount from './LazyMount'
+
+// Below-the-fold sections are code-split into their own chunks. Combined with
+// LazyMount, each section's JavaScript is fetched only when it scrolls near the
+// viewport — so the initial landing download is just the nav + hero, not the whole
+// 230 KB sections bundle (plus framer-motion no longer needs to parse up front).
+const WhatIsWardRounds = lazy(() => import('./WhatIsWardRounds'))
+const HowItWorks       = lazy(() => import('./HowItWorks'))
+const FeatureBlocks    = lazy(() => import('./FeatureBlocks'))
+const ExportShowcase   = lazy(() => import('./ExportShowcase'))
+const AnalyticsShowcase = lazy(() => import('./AnalyticsShowcase'))
+const Testimonials     = lazy(() => import('./Testimonials'))
+const FAQ              = lazy(() => import('./FAQ'))
+const FinalCTA         = lazy(() => import('./FinalCTA'))
+const Footer           = lazy(() => import('./Footer'))
 
 export default function Landing() {
   const [authMode, setAuthMode] = useState('signin')
@@ -63,15 +68,15 @@ export default function Landing() {
           blocking on a synchronous mount of every framer-motion section at once. */}
       <LandingNav openAuth={openAuth} lenisRef={lenisRef} />
       <Hero openAuth={openAuth} />
-      <LazyMount><WhatIsWardRounds /></LazyMount>
-      <LazyMount><HowItWorks /></LazyMount>
-      <LazyMount><FeatureBlocks /></LazyMount>
-      <LazyMount><ExportShowcase /></LazyMount>
-      <LazyMount><AnalyticsShowcase /></LazyMount>
-      <LazyMount><Testimonials /></LazyMount>
-      <LazyMount><FAQ openAuth={openAuth} /></LazyMount>
-      <LazyMount><FinalCTA openAuth={openAuth} /></LazyMount>
-      <LazyMount minHeight={240}><Footer openAuth={openAuth} lenisRef={lenisRef} /></LazyMount>
+      <LazyMount><Suspense fallback={null}><WhatIsWardRounds /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><HowItWorks /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><FeatureBlocks /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><ExportShowcase /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><AnalyticsShowcase /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><Testimonials /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><FAQ openAuth={openAuth} /></Suspense></LazyMount>
+      <LazyMount><Suspense fallback={null}><FinalCTA openAuth={openAuth} /></Suspense></LazyMount>
+      <LazyMount minHeight={240}><Suspense fallback={null}><Footer openAuth={openAuth} lenisRef={lenisRef} /></Suspense></LazyMount>
       <AuthModal open={authOpen} mode={authMode} onModeChange={setAuthMode} onClose={() => setAuthOpen(false)} />
     </div>
   )
