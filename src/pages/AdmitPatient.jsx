@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Camera, Search, X, CheckCircle, Calendar, Building2, User, ChevronDown } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import TopHeader from '../components/TopHeader'
-import { extractPatientDataFromTag } from '../lib/hospitalTagReader'
+import ModalShell from '../components/ModalShell'
+import Toast from '../components/Toast'
+import { extractPatientDataFromTag, matchHospitalFromScan } from '../lib/hospitalTagReader'
 import { supabase } from '../lib/supabaseClient'
 import {
   fetchHospitals,
@@ -12,7 +14,10 @@ import {
   updatePatient,
   createAdmission,
   addNote,
+  findPatientByHospitalId,
+  findPatientByNameAndDob,
 } from '../lib/api'
+import { logActivity } from '../lib/activityLog'
 
 function nowLocalDT() {
   return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
@@ -21,12 +26,14 @@ function nowLocalDT() {
 export default function AdmitPatient() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   // Patient fields
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [insurance, setInsurance] = useState('')
+  const [phone, setPhone] = useState('')
 
   // Admission fields
   const [hospitalId, setHospitalId] = useState('')
@@ -40,6 +47,11 @@ export default function AdmitPatient() {
   const [isSearching, setIsSearching] = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState(null)
   const searchTimeout = useRef(null)
+
+  // Ward field attention (draws the eye to Ward when it's the one thing prefill couldn't fill in)
+  const wardSelectRef = useRef(null)
+  const [wardHighlight, setWardHighlight] = useState(false)
+  const wardHighlightTimeout = useRef(null)
 
   // Scan modal
   const [showScanModal, setShowScanModal] = useState(false)
@@ -60,8 +72,41 @@ export default function AdmitPatient() {
   const wards = hospitals.find(h => h.id === hospitalId)?.hospital_services || []
 
   useEffect(() => {
-    if (user?.team_id) fetchHospitals(user.team_id).then(setHospitals).catch(console.error)
+    if (user?.team_id) fetchHospitals(user.team_id).then(setHospitals).catch(err => { console.error(err); showToast('Failed to load hospitals.', 'error') })
   }, [user?.team_id])
+
+  function flashWardHighlight() {
+    wardSelectRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setWardHighlight(true)
+    if (wardHighlightTimeout.current) clearTimeout(wardHighlightTimeout.current)
+    wardHighlightTimeout.current = setTimeout(() => setWardHighlight(false), 2000)
+  }
+
+  useEffect(() => {
+    const { prefillPatient, prefillHospitalId } = location.state || {}
+    if (prefillPatient) {
+      setFirstName(prefillPatient.first_name || '')
+      setLastName(prefillPatient.last_name || '')
+      setDateOfBirth(prefillPatient.date_of_birth || '')
+      if (prefillPatient.id) {
+        setSelectedPatientId(prefillPatient.id)
+        checkActiveAdmission(prefillPatient.id)
+      }
+      window.history.replaceState({}, '')
+    }
+    if (prefillHospitalId) {
+      setHospitalId(prefillHospitalId)
+      // Hospital arrived prefilled but Ward never does — draw attention to it once the form has painted.
+      if (!ward) {
+        const t = setTimeout(flashWardHighlight, 400)
+        return () => clearTimeout(t)
+      }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => {
+    if (wardHighlightTimeout.current) clearTimeout(wardHighlightTimeout.current)
+  }, [])
 
   function showToast(message, type = 'success') {
     setToast({ message, type })
@@ -80,10 +125,25 @@ export default function AdmitPatient() {
         setSearchResults(results || [])
       } catch (err) {
         console.error(err)
+        showToast('Patient search failed — please try again.', 'error')
       } finally {
         setIsSearching(false)
       }
     }, 300)
+  }
+
+  // Single source of truth for "is this patient already admitted somewhere?" —
+  // every path that sets selectedPatientId (manual search, prefill from Patients-page
+  // Admit quick action, scan) must call this so the warning can't be silently skipped.
+  async function checkActiveAdmission(patientId) {
+    setActiveAdmissionWarning(null)
+    const { data: activeAdmission } = await supabase
+      .from('admissions')
+      .select('id, ward, hospitals(name)')
+      .eq('patient_id', patientId)
+      .eq('status', 'admitted')
+      .maybeSingle()
+    if (activeAdmission) setActiveAdmissionWarning(activeAdmission)
   }
 
   async function handleSelectExistingPatient(patient) {
@@ -94,15 +154,7 @@ export default function AdmitPatient() {
     setInsurance(patient.insurance_name || '')
     setSearchQuery(`${patient.first_name} ${patient.last_name}`)
     setSearchResults([])
-    setActiveAdmissionWarning(null)
-
-    const { data: activeAdmission } = await supabase
-      .from('admissions')
-      .select('id, ward, hospitals(name)')
-      .eq('patient_id', patient.id)
-      .eq('status', 'admitted')
-      .maybeSingle()
-    if (activeAdmission) setActiveAdmissionWarning(activeAdmission)
+    await checkActiveAdmission(patient.id)
   }
 
   function clearPatientSelection() {
@@ -111,6 +163,7 @@ export default function AdmitPatient() {
     setLastName('')
     setDateOfBirth('')
     setInsurance('')
+    setPhone('')
     setSearchQuery('')
     setSearchResults([])
     setActiveAdmissionWarning(null)
@@ -154,48 +207,43 @@ export default function AdmitPatient() {
       if (extracted.dateOfBirth) setDateOfBirth(extracted.dateOfBirth)
       setScannedData(extracted)
 
-      // Auto-select hospital: three-tier matching
       if (hospitals.length > 0) {
-        const norm = s => (s || '').toLowerCase().replace(/[\s.]/g, '')
-        let matchedHospital = null
-
-        // 1. Vision already matched against registered hospital names in the prompt
-        if (extracted.hospital) {
-          matchedHospital = hospitals.find(h => norm(h.name) === norm(extracted.hospital))
-          if (matchedHospital) console.log('✅ Matched registered hospital:', matchedHospital.name)
-        }
-
-        // 2. Match by idPrefix marker against stored hospital_id_prefix
-        if (!matchedHospital && extracted.idPrefix) {
-          const target = norm(extracted.idPrefix)
-          matchedHospital = hospitals.find(h => h.hospital_id_prefix && norm(h.hospital_id_prefix) === target)
-          if (matchedHospital) console.log('✅ Matched by prefix marker:', matchedHospital.name)
-        }
-
-        // 3. Stored prefix appears inside the raw patient ID
-        if (!matchedHospital && extracted.patientHospitalId) {
-          const idNorm = norm(extracted.patientHospitalId)
-          matchedHospital = hospitals.find(h => h.hospital_id_prefix && idNorm.includes(norm(h.hospital_id_prefix)))
-          if (matchedHospital) console.log('✅ Matched by prefix-in-ID:', matchedHospital.name)
-        }
-
+        const { hospital: matchedHospital, ward: matchedWard } = matchHospitalFromScan(extracted, hospitals)
         if (matchedHospital) {
           setHospitalId(matchedHospital.id)
-          if (extracted.ward && matchedHospital.hospital_services?.length > 0) {
-            const matchedWard = matchedHospital.hospital_services.find(s =>
-              s.service_name.toLowerCase().includes(extracted.ward.toLowerCase()) ||
-              extracted.ward.toLowerCase().includes(s.service_name.toLowerCase())
-            )
-            if (matchedWard) setWard(matchedWard.service_name)
-          }
+          if (matchedWard) setWard(matchedWard)
         } else {
           console.warn('⚠️ No hospital matched. prefix:', extracted.idPrefix, 'id:', extracted.patientHospitalId, 'name:', extracted.hospital)
         }
       }
 
+      // A scanned tag's patient_hospital_id is scoped to that one hospital's own ID
+      // scheme, so it can never match this same person's record from a different
+      // hospital (findPatientByHospitalId in handleSubmit would miss them entirely,
+      // silently creating a duplicate patient). Name+DOB is the only identity signal
+      // a scan gives us that works across hospitals — check it here, immediately,
+      // so both the duplicate-patient creation and the missing active-admission
+      // warning are caught before the user even fills in the rest of the form.
+      let matchedPatient = null
+      if (extracted.firstName && extracted.lastName && extracted.dateOfBirth) {
+        matchedPatient = await findPatientByNameAndDob(
+          user.team_id, extracted.firstName, extracted.lastName, extracted.dateOfBirth
+        )
+      }
+      if (matchedPatient) {
+        setSelectedPatientId(matchedPatient.id)
+        setInsurance(matchedPatient.insurance_name || '')
+        await checkActiveAdmission(matchedPatient.id)
+      }
+
       setShowScanModal(false)
       setScanPreview(null)
-      showToast('Tag scanned — please review and complete admission.', 'info')
+      showToast(
+        matchedPatient
+          ? 'Tag scanned — matched an existing patient record. Please review.'
+          : 'Tag scanned — please review and complete admission.',
+        'info'
+      )
     } catch (err) {
       setScanError(err.message || 'Could not read tag — try a clearer photo.')
     } finally {
@@ -219,6 +267,7 @@ export default function AdmitPatient() {
     }
     if (!hospitalId || !ward) {
       setSubmitError('Please select a hospital and ward.')
+      flashWardHighlight()
       return
     }
 
@@ -226,14 +275,24 @@ export default function AdmitPatient() {
     try {
       let patientId = selectedPatientId
       if (!patientId) {
-        const newPatient = await createPatient({
-          team_id: user.team_id,
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          date_of_birth: dateOfBirth || null,
-          insurance_name: insurance || null,
-        })
-        patientId = newPatient.id
+        let existing = null
+        if (scannedData?.patientHospitalId) {
+          existing = await findPatientByHospitalId(user.team_id, scannedData.patientHospitalId)
+        }
+        if (existing) {
+          patientId = existing.id
+          if (insurance) await updatePatient(patientId, { insurance_name: insurance })
+        } else {
+          const newPatient = await createPatient({
+            team_id: user.team_id,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            date_of_birth: dateOfBirth || null,
+            insurance_name: insurance || null,
+            phone: phone || null,
+          })
+          patientId = newPatient.id
+        }
       } else if (insurance) {
         await updatePatient(patientId, { insurance_name: insurance })
       }
@@ -247,6 +306,11 @@ export default function AdmitPatient() {
         team_start_date: teamStartDate,
         status: 'admitted',
         patient_hospital_id: scannedData?.patientHospitalId || null,
+      })
+
+      await logActivity({
+        user, action: 'admit', entityType: 'admission', entityId: newAdmission.id,
+        patientId, patientName: `${firstName.trim()} ${lastName.trim()}`,
       })
 
       if (scannedData) {
@@ -286,6 +350,7 @@ export default function AdmitPatient() {
     setLastName('')
     setDateOfBirth('')
     setInsurance('')
+    setPhone('')
     setHospitalId('')
     setWard('')
     setAdmissionDate(nowLocalDT())
@@ -306,19 +371,13 @@ export default function AdmitPatient() {
       <TopHeader title="Admit Patient" />
 
       {/* Toast */}
-      {toast && (
-        <div className={`fixed top-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-50 px-4 py-3 rounded-2xl shadow-glass-md flex items-center gap-2 text-sm font-medium text-white transition-all
-          ${toast.type === 'error' ? 'bg-ios-red' : toast.type === 'info' ? 'bg-ios-orange' : 'bg-ios-green'}`}>
-          {toast.type === 'success' && <CheckCircle size={16} />}
-          <span className="flex-1">{toast.message}</span>
-          <button onClick={() => setToast(null)}><X size={14} /></button>
-        </div>
-      )}
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
 
       {/* Scan modal */}
       {showScanModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto">
-          <div className="glass-card w-full max-w-sm space-y-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md">
+        <ModalShell onClose={closeScanModal}>
+          <div className="glass-rim rounded-3xl p-2.5 w-full max-w-sm">
+            <div className="surface-shell p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Scan Hospital Tag</h3>
               <button onClick={closeScanModal}>
@@ -372,10 +431,11 @@ export default function AdmitPatient() {
               </button>
             )}
           </div>
-        </div>
+          </div>
+        </ModalShell>
       )}
 
-      <div className="p-4 max-w-lg mx-auto w-full space-y-4 pb-10">
+      <div className="p-4 max-w-lg mx-auto w-full space-y-4 pb-28 sm:pb-0">
 
         {/* Scan button + returning patient search */}
         <div className="flex gap-2">
@@ -410,7 +470,7 @@ export default function AdmitPatient() {
 
         {/* Patient search results */}
         {(searchResults.length > 0 || isSearching) && (
-          <div className="glass-card -mt-2 p-1 space-y-0.5">
+          <div className="border border-gray-200 rounded-2xl bg-white/70 -mt-2 p-1 space-y-0.5">
             {isSearching ? (
               <div className="flex items-center justify-center py-3">
                 <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
@@ -460,7 +520,7 @@ export default function AdmitPatient() {
         <form onSubmit={handleSubmit} className="space-y-4">
 
           {/* Patient Details */}
-          <div className="glass-card space-y-3">
+          <div className="border border-gray-200 rounded-2xl bg-white/70 p-5 space-y-3">
             <div className="flex items-center gap-2">
               <User size={14} className="text-ios-blue" />
               <p className="text-xs font-semibold text-ios-gray-1 uppercase tracking-wide">Patient Details</p>
@@ -499,7 +559,7 @@ export default function AdmitPatient() {
           </div>
 
           {/* Hospital & Ward */}
-          <div className="glass-card space-y-3">
+          <div className="border border-gray-200 rounded-2xl bg-white/70 p-5 space-y-3">
             <div className="flex items-center gap-2">
               <Building2 size={14} className="text-ios-blue" />
               <p className="text-xs font-semibold text-ios-gray-1 uppercase tracking-wide">Hospital &amp; Ward</p>
@@ -523,22 +583,31 @@ export default function AdmitPatient() {
               <label className="text-sm font-medium">Ward / Service</label>
               <div className="relative">
                 <select
+                  ref={wardSelectRef}
                   required
                   value={ward}
                   onChange={e => setWard(e.target.value)}
                   disabled={!hospitalId || wards.length === 0}
-                  className="ios-input appearance-none pr-8 disabled:opacity-50"
+                  className={`ios-input appearance-none pr-8 disabled:opacity-50 transition-shadow duration-300 ${
+                    wardHighlight ? 'ring-2 ring-[#007AFF] ring-offset-2' : ''
+                  }`}
                 >
                   <option value="">{hospitalId ? 'Select ward…' : 'Select hospital first'}</option>
                   {wards.map(s => <option key={s.id} value={s.service_name}>{s.service_name}</option>)}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-ios-gray-1 pointer-events-none" />
               </div>
+              {submitError === 'Please select a hospital and ward.' && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl text-sm text-red-600 dark:text-red-400">
+                  <X size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{submitError}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Admission Details */}
-          <div className="glass-card space-y-3">
+          <div className="border border-gray-200 rounded-2xl bg-white/70 p-5 space-y-3">
             <div className="flex items-center gap-2">
               <Calendar size={14} className="text-ios-blue" />
               <p className="text-xs font-semibold text-ios-gray-1 uppercase tracking-wide">Admission Details</p>
@@ -578,9 +647,19 @@ export default function AdmitPatient() {
                 placeholder="e.g. BUPA, NHIF, Private"
               />
             </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Mobile Number <span className="text-ios-gray-2 font-normal">(optional)</span></label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                className="ios-input"
+                placeholder="e.g. 0712 345 678"
+              />
+            </div>
           </div>
 
-          {submitError && (
+          {submitError && submitError !== 'Please select a hospital and ward.' && (
             <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl text-sm text-red-600 dark:text-red-400">
               <X size={14} className="mt-0.5 flex-shrink-0" />
               <span>{submitError}</span>
@@ -618,11 +697,9 @@ export default function AdmitPatient() {
       </div>
 
       {showResetConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0,0,0,0.2)' }}
-        >
-          <div className="glass-card rounded-2xl p-6 bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl w-full max-w-sm">
+        <ModalShell onClose={() => setShowResetConfirm(false)} maxWidth="max-w-sm">
+          <div className="glass-rim rounded-3xl p-2.5">
+            <div className="surface-shell p-6">
             <h3 className="text-base font-semibold text-gray-900 mb-1">Clear all fields?</h3>
             <p className="text-sm text-gray-500 mb-6">
               This will reset the form and remove any scanned or entered data.
@@ -641,8 +718,9 @@ export default function AdmitPatient() {
                 Clear Fields
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   )

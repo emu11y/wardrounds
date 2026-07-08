@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { X, FileText, Plus } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import ModalShell from '../../components/ModalShell'
 import { addNote, fetchNotes } from '../../lib/api'
+import { logActivity } from '../../lib/activityLog'
 
 export default function AddNotesModal({ admission, onClose, onSaved }) {
   const { user } = useAuth()
@@ -10,19 +12,31 @@ export default function AddNotesModal({ admission, onClose, onSaved }) {
   const [signature, setSignature] = useState(user?.full_name || '')
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
 
   const patient = admission?.patients
 
-  useEffect(() => {
-    fetchNotes(admission.id).then(setNotes).catch(console.error).finally(() => setFetching(false))
-  }, [admission.id])
+  function loadNotes() {
+    setFetching(true)
+    setFetchError(false)
+    fetchNotes(admission.id)
+      .then(setNotes)
+      .catch(err => { console.error(err); setFetchError(true) })
+      .finally(() => setFetching(false))
+  }
+
+  useEffect(() => { loadNotes() }, [admission.id])
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!text.trim()) return
     setLoading(true)
     try {
-      await addNote(admission.id, text, user.id, signature)
+      const note = await addNote(admission.id, text, user.id, signature)
+      await logActivity({
+        user, action: 'add_note', entityType: 'note', entityId: note?.id,
+        patientId: patient?.id, patientName: `${patient?.first_name} ${patient?.last_name}`,
+      })
       const updated = await fetchNotes(admission.id)
       setNotes(updated)
       setText('')
@@ -35,9 +49,9 @@ export default function AddNotesModal({ admission, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg glass-card max-h-[85vh] flex flex-col">
+    <ModalShell onClose={onClose} maxWidth="max-w-lg">
+      <div className="glass-rim rounded-3xl p-2.5 max-h-[85vh] flex flex-col">
+        <div className="surface-shell flex-1 min-h-0 p-5">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -58,6 +72,13 @@ export default function AddNotesModal({ admission, onClose, onSaved }) {
           {fetching ? (
             <div className="space-y-2">
               {[1,2].map(i => <div key={i} className="h-16 bg-ios-gray-5 rounded-2xl animate-pulse" />)}
+            </div>
+          ) : fetchError ? (
+            <div className="text-center py-6 text-sm">
+              <p className="text-red-500 mb-2">Failed to load notes</p>
+              <button type="button" onClick={loadNotes} className="text-xs font-semibold text-ios-blue underline">
+                Retry
+              </button>
             </div>
           ) : notes.length === 0 ? (
             <div className="text-center py-6 text-ios-gray-1 text-sm">No notes yet</div>
@@ -97,7 +118,8 @@ export default function AddNotesModal({ admission, onClose, onSaved }) {
             </button>
           </div>
         </form>
+        </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

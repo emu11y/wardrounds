@@ -59,10 +59,6 @@
     @apply bg-white/10 border-white/10;
   }
 
-  .glass-card {
-    @apply glass rounded-3xl p-5;
-  }
-
   .glass-button {
     @apply backdrop-blur-sm bg-white/50 border border-white/30 rounded-2xl px-4 py-2
            font-medium transition-all active:scale-95 cursor-pointer;
@@ -124,4 +120,79 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+}
+
+.glass-drawer {
+  background-color: rgb(255 255 255 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow: 0 16px 50px rgb(255 255 255 / 0.2);
+}
+
+.glass-rim {
+  background-color: rgb(255 255 255 / 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow: 0 16px 50px rgb(0 0 0 / 0.12);
+}
+
+.surface-shell {
+  background-color: rgb(255 255 255 / 0.94);
+  border-radius: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.field-box {
+  border: 1px solid rgb(226 229 234);
+  border-radius: 0.75rem;
+  padding: 0.5625rem 0.75rem;
+  font-size: 0.875rem;
+  color: rgb(26 26 46);
+  background-color: white;
+}
+
+.section-frame {
+  border: 1px solid rgb(226 229 234);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body * { visibility: hidden !important; }
+  .invoice-for-print,
+  .invoice-for-print * { visibility: visible !important; }
+  .invoice-for-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  .invoice-scroll-body {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+  .no-print { display: none !important; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  .invoice-for-print table { width: 100%; }
+}
+
+/* WhatIsWardRounds comparison backdrop — drifting numbers */
+@keyframes wr-drift-up {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
 }

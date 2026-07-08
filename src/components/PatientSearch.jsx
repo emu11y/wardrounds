@@ -6,11 +6,13 @@ export default function PatientSearch({ teamId, onSelect }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
+  const [error, setError] = useState(null)
   const timer = useRef(null)
 
   function handleChange(e) {
     const val = e.target.value
     setQuery(val)
+    setError(null)
     clearTimeout(timer.current)
     if (val.length < 2) { setResults([]); return }
     setSearching(true)
@@ -20,6 +22,7 @@ export default function PatientSearch({ teamId, onSelect }) {
         setResults(data || [])
       } catch (err) {
         console.error(err)
+        setError('Search failed — please try again.')
       } finally {
         setSearching(false)
       }
@@ -29,6 +32,7 @@ export default function PatientSearch({ teamId, onSelect }) {
   function clear() {
     setQuery('')
     setResults([])
+    setError(null)
   }
 
   return (
@@ -56,6 +60,10 @@ export default function PatientSearch({ teamId, onSelect }) {
         </div>
       )}
 
+      {error && !searching && (
+        <p className="text-sm text-red-500 text-center py-2">{error}</p>
+      )}
+
       {results.length > 0 && (
         <div className="space-y-1.5">
           {results.map(p => (
@@ -80,7 +88,7 @@ export default function PatientSearch({ teamId, onSelect }) {
         </div>
       )}
 
-      {query.length >= 2 && !searching && results.length === 0 && (
+      {query.length >= 2 && !searching && !error && results.length === 0 && (
         <p className="text-sm text-ios-gray-1 text-center py-3">
           No patients found for "{query}"
         </p>

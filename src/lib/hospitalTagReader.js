@@ -1,82 +1,68 @@
-function normaliseMediaType(rawType) {
-  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  if (allowed.includes(rawType)) return rawType
-  // HEIC, HEIF, BMP, TIFF, AVIF, etc. → treat as jpeg (base64 payload is unchanged)
-  return 'image/jpeg'
-}
+import { supabase } from './supabaseClient'
 
+// Calls the `scan-tag` Supabase Edge Function, which proxies the Claude API
+// server-side. The Claude key is a project secret (CLAUDE_API_KEY) and is never
+// shipped to the browser; only authenticated users can trigger a scan.
 export async function extractPatientDataFromTag(imageBase64, hospitals = [], mediaType = 'image/jpeg') {
-  const apiKey = import.meta.env.VITE_CLAUDE_API_KEY
-  if (!apiKey) throw new Error('VITE_CLAUDE_API_KEY is not set')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not authenticated')
 
-  const hospitalReference = hospitals
-    .filter(h => h.hospital_id_prefix)
-    .map(h => `- "${h.name}" uses ID prefix "${h.hospital_id_prefix}"`)
-    .join('\n')
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scan-tag`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ imageBase64, hospitals, mediaType }),
+    }
+  )
 
-  const referenceBlock = hospitalReference
-    ? `The team has registered these hospitals and their patient-ID prefix markers:\n${hospitalReference}\n\nMatch the tag to ONE of these hospitals by finding which prefix marker appears on the tag. Return that exact registered hospital name in the "hospital" field.`
-    : `Identify the hospital name as printed on the tag.`
+  let data
+  try {
+    data = await response.json()
+  } catch {
+    data = null
+  }
 
-  const prompt = `You are a medical data extraction expert. Extract patient information from this hospital tag/card image.
+  if (!response.ok) {
+    throw new Error(data?.error || `Scan failed (HTTP ${response.status})`)
+  }
+  if (!data?.extracted) throw new Error('No data extracted from tag')
 
-IMPORTANT: Return ONLY valid JSON, nothing else. No markdown, no explanation.
-
-${referenceBlock}
-
-Extract these fields (use null if not found or unclear):
-{
-  "firstName": "first name only",
-  "lastName": "last name or family name",
-  "dateOfBirth": "YYYY-MM-DD format (convert from any date format; if only age is shown, approximate the birth year)",
-  "patientHospitalId": "the full patient ID value/code printed on the tag",
-  "idPrefix": "the short label/marker that identifies the hospital system on the tag, exactly as printed (e.g. the letters before the ID number)",
-  "ward": "ward name, room, or service if visible",
-  "hospital": "the matched registered hospital name from the list above, or the name printed on the tag if no match"
+  return data.extracted
 }
 
-Return ONLY the JSON object, nothing else.`
+export function matchHospitalFromScan(extracted, hospitals = []) {
+  if (!hospitals.length) return { hospital: null, ward: null }
+  const norm = s => (s || '').toLowerCase().replace(/[\s.]/g, '')
+  let hospital = null
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 500,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: normaliseMediaType(mediaType), data: imageBase64 },
-            },
-            { type: 'text', text: prompt },
-          ],
-        },
-      ],
-    }),
-  })
+  // 1. Vision-matched registered hospital name
+  if (extracted.hospital) {
+    hospital = hospitals.find(h => norm(h.name) === norm(extracted.hospital)) || null
+  }
+  // 2. idPrefix marker against stored hospital_id_prefix
+  if (!hospital && extracted.idPrefix) {
+    const target = norm(extracted.idPrefix)
+    hospital = hospitals.find(h => h.hospital_id_prefix && norm(h.hospital_id_prefix) === target) || null
+  }
+  // 3. stored prefix appears inside the raw patient ID
+  if (!hospital && extracted.patientHospitalId) {
+    const idNorm = norm(extracted.patientHospitalId)
+    hospital = hospitals.find(h => h.hospital_id_prefix && idNorm.includes(norm(h.hospital_id_prefix))) || null
+  }
 
-  const data = await response.json()
-  if (data.error) throw new Error(data.error.message)
-
-  const textContent = data.content?.find(c => c.type === 'text')?.text || ''
-  const jsonMatch = textContent.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('No JSON found in response')
-
-  const extracted = JSON.parse(jsonMatch[0])
-  console.log('✅ Extracted:', extracted)
-  console.log('   Name:', extracted.firstName, extracted.lastName)
-  console.log('   DOB:', extracted.dateOfBirth)
-  console.log('   Patient Hospital ID:', extracted.patientHospitalId || '(none)')
-  console.log('   ID Prefix marker:', extracted.idPrefix || '(none)')
-  console.log('   Hospital (matched):', extracted.hospital || '(none)')
-  console.log('   Ward:', extracted.ward || '(empty)')
-  return extracted
+  // optional ward match (used by Admit; outpatient ignores ward)
+  let ward = null
+  if (hospital && extracted.ward && hospital.hospital_services?.length) {
+    const w = extracted.ward.toLowerCase()
+    const matched = hospital.hospital_services.find(s =>
+      s.service_name.toLowerCase().includes(w) || w.includes(s.service_name.toLowerCase())
+    )
+    ward = matched?.service_name || null
+  }
+  return { hospital, ward }
 }

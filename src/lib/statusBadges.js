@@ -10,3 +10,16 @@ export function getStatusBadgeStyle(status) {
       return { text: status || 'Unknown', className: 'bg-gray-100 text-gray-600', icon: '?' }
   }
 }
+
+// Tailwind badge classes for an outpatient-visit status. Previously duplicated
+// as STATUS_STYLE in Outpatient.jsx and OP_STATUS_STYLE in Patients.jsx.
+const OUTPATIENT_STATUS_STYLE = {
+  seen:      'bg-green-100 text-green-700',
+  closed:    'bg-gray-100 text-gray-600',
+  scheduled: 'bg-blue-100 text-blue-700',
+  pending:   'bg-amber-100 text-amber-700',
+}
+
+export function getOutpatientStatusStyle(status) {
+  return OUTPATIENT_STATUS_STYLE[status] || 'bg-gray-100 text-gray-600'
+}

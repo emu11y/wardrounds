@@ -1,39 +1,78 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Stethoscope, UserPlus, Settings } from 'lucide-react'
-
-const tabs = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/patients', icon: Users, label: 'Patients' },
-  { to: '/outpatient', icon: Stethoscope, label: 'Outpatient' },
-  { to: '/admit', icon: UserPlus, label: 'Admit' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-]
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { BedDouble, Stethoscope, CalendarClock, Settings } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function TabNavigation() {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+
+  const [isScrollingDown, setIsScrollingDown] = useState(false)
+  const lastScrollY = useRef(0)
+  const { user } = useAuth()
+  const avatar_url = user?.avatar_url
+  const nameParts = user?.full_name?.trim().split(/\s+/) || []
+  const initials = nameParts.length > 1
+    ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+    : nameParts[0]?.[0]?.toUpperCase() || '?'
+
+  useEffect(() => {
+    const scrollEl = document.querySelector('#main-scroll')
+      || document.querySelector('main')
+      || document.querySelector('.overflow-y-auto')
+
+    if (!scrollEl) return
+
+    const handleScroll = () => {
+      const currentY = scrollEl.scrollTop
+      setIsScrollingDown(currentY > lastScrollY.current && currentY > 20)
+      lastScrollY.current = currentY
+    }
+
+    scrollEl.addEventListener('scroll', handleScroll, { passive: true })
+    return () => scrollEl.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const inpatientActive = pathname === '/' || pathname.startsWith('/dashboard') || pathname.startsWith('/admit')
+  const outpatientActive = pathname.startsWith('/outpatient')
+  const appointmentsActive = pathname.startsWith('/appointments')
+  const settingsActive = pathname.startsWith('/settings')
+
+  const navItems = [
+    { label: 'Inpatient',  Icon: BedDouble,    active: inpatientActive,    onClick: () => navigate('/') },
+    { label: 'Outpatient', Icon: Stethoscope,   active: outpatientActive,   onClick: () => navigate('/outpatient') },
+    { label: 'Appointments',   Icon: CalendarClock, active: appointmentsActive, onClick: () => navigate('/appointments') },
+    { label: 'Settings',   Icon: Settings,      active: settingsActive,     onClick: () => navigate('/settings') },
+  ]
+
   return (
-    <nav className="md:hidden fixed bottom-4 left-4 right-4 z-30">
-      <div className="flex glass border border-white/30 shadow-xl rounded-2xl px-2 py-2">
-        {tabs.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-all
-               ${isActive ? 'text-ios-blue' : 'text-ios-gray-1'}`
-            }
+    <div
+      className={`fixed left-1/2 -translate-x-1/2 z-50 sm:hidden transition-all duration-300 ease-in-out ${
+        isScrollingDown ? 'bottom-3 scale-90 opacity-80' : 'bottom-5 scale-100 opacity-100'
+      }`}
+    >
+      <div className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/90 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-white/60">
+        {navItems.map(({ label, Icon, active, onClick }) => (
+          <button
+            key={label}
+            onClick={onClick}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-full transition-all duration-200 ${
+              active ? 'bg-[#007AFF]/10 text-[#007AFF]' : 'bg-transparent text-gray-400'
+            }`}
           >
-            {({ isActive }) => (
-              <>
-                <div className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-ios-blue/10' : ''}`}>
-                  <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} />
-                </div>
-                <span className="text-[10px] font-medium leading-tight">{label}</span>
-              </>
-            )}
-          </NavLink>
+            {label === 'Settings'
+              ? (avatar_url
+                  ? <img src={avatar_url} alt="Profile" className={`w-6 h-6 rounded-full object-cover ${active ? 'ring-2 ring-[#007AFF] ring-offset-1' : ''}`} />
+                  : <div className={`w-6 h-6 rounded-full bg-[#007AFF] flex items-center justify-center text-white font-semibold ${active ? 'ring-2 ring-[#007AFF] ring-offset-1' : 'text-[10px]'}`} style={{ fontSize: '10px' }}>{initials}</div>
+                )
+              : <Icon size={20} strokeWidth={active ? 2 : 1.8} />
+            }
+            <span className={`text-[10px] font-medium leading-none ${active ? 'text-[#007AFF]' : 'text-gray-400'}`}>
+              {label}
+            </span>
+          </button>
         ))}
       </div>
-    </nav>
+    </div>
   )
 }

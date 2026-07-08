@@ -1,15 +1,42 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useState, useEffect, Suspense, lazy } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { supabase } from './lib/supabaseClient'
 import { SidebarProvider } from './context/SidebarContext'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Patients from './pages/Patients'
-import AdmitPatient from './pages/AdmitPatient'
-import Analytics from './pages/Analytics'
-import Settings from './pages/Settings'
-import Outpatient from './pages/Outpatient'
+import WelcomeModal from './components/onboarding/WelcomeModal'
+import TooltipTour from './components/onboarding/TooltipTour'
 import Sidebar from './components/Sidebar'
+import PageGuard from './components/PageGuard'
 import TabNavigation from './components/TabNavigation'
+import SessionGuard from './components/SessionGuard'
+
+// Route-level code splitting: each page ships as its own chunk, fetched on
+// first visit instead of all being bundled into one ~1.8MB upfront payload.
+// Structural pieces used on every route (Sidebar, PageGuard, TabNavigation,
+// SessionGuard above) stay eager since splitting them out wouldn't reduce
+// what's needed for first paint.
+const Login          = lazy(() => import('./pages/Login'))
+const Dashboard      = lazy(() => import('./pages/Dashboard'))
+const Patients       = lazy(() => import('./pages/Patients'))
+const AdmitPatient   = lazy(() => import('./pages/AdmitPatient'))
+const Analytics      = lazy(() => import('./pages/Analytics'))
+const Settings       = lazy(() => import('./pages/Settings'))
+const Outpatient     = lazy(() => import('./pages/Outpatient'))
+const MyAppointments = lazy(() => import('./pages/MyAppointments'))
+const AuthCallback   = lazy(() => import('./pages/AuthCallback'))
+const ResetPassword  = lazy(() => import('./pages/ResetPassword'))
+const Landing        = lazy(() => import('./pages/landing/Landing'))
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-ios-gray-6 dark:bg-gray-900">
+      <div className="flex flex-col items-center gap-3">
+        <img src="/wardrounds-icon.png" className="w-12 h-12 object-contain animate-pulse" alt="WardRounds" />
+        <p className="text-ios-gray-1 text-sm font-medium">Loading WardRounds…</p>
+      </div>
+    </div>
+  )
+}
 
 function ProtectedLayout({ children }) {
   const { session, loading } = useAuth()
@@ -18,9 +45,7 @@ function ProtectedLayout({ children }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ios-gray-6 dark:bg-gray-900">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-ios-blue flex items-center justify-center animate-pulse">
-            <span className="text-white font-bold text-xl">W</span>
-          </div>
+          <img src="/wardrounds-icon.png" className="w-12 h-12 object-contain animate-pulse" alt="WardRounds" />
           <p className="text-ios-gray-1 text-sm font-medium">Loading WardRounds…</p>
         </div>
       </div>
@@ -33,8 +58,8 @@ function ProtectedLayout({ children }) {
     <SidebarProvider>
       <div className="flex h-screen overflow-hidden bg-ios-gray-6 dark:bg-gray-900 p-3 gap-3">
         <Sidebar />
-        <main className="flex-1 flex flex-col overflow-hidden rounded-3xl bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm">
-          <div className="flex-1 overflow-y-auto scrollbar-none pb-36 md:pb-0">
+        <main className="relative flex-1 flex flex-col overflow-hidden rounded-3xl bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm">
+          <div id="main-scroll" className="flex-1 overflow-y-auto scrollbar-none pb-24 sm:pb-0">
             {children}
           </div>
           <TabNavigation />
@@ -51,19 +76,122 @@ function PublicRoute({ children }) {
   return children
 }
 
+function RootRoute() {
+  const { session, loading } = useAuth()
+  if (loading) return null
+  if (!session) return <Landing />
+  return <ProtectedLayout><DefaultRedirect /></ProtectedLayout>
+}
+
+function DefaultRedirect() {
+  const { permissions } = useAuth()
+  if (!permissions) return null
+  if (permissions?.view_inpatient === true) return <Dashboard />
+  if (permissions?.view_outpatient === true) return <Navigate to="/outpatient" replace />
+  if (permissions?.view_patients === true) return <Navigate to="/patients" replace />
+  if (permissions?.view_analytics === true) return <Navigate to="/analytics" replace />
+  return <Navigate to="/settings" replace />
+}
+
+const ONBOARDING_KEY = 'wr_onboarding_complete'
+
+function AppInner() {
+  const { user, session } = useAuth()
+  const navigate = useNavigate()
+  const [showWelcome, setShowWelcome] = useState(false)
+  const [showTour, setShowTour]       = useState(false)
+
+  useEffect(() => {
+    if (!user || !user.team_id) return
+
+    const forceShow = new URLSearchParams(window.location.search).get('onboarding')
+    if (forceShow === '1') {
+      localStorage.removeItem(ONBOARDING_KEY)
+      setShowWelcome(true)
+      return
+    }
+
+    if (localStorage.getItem(ONBOARDING_KEY)) return
+    supabase
+      .from('hospitals')
+      .select('id')
+      .eq('team_id', user.team_id)
+      .limit(1)
+      .then(({ data }) => {
+        if (!data || data.length === 0) setShowWelcome(true)
+      })
+  }, [user])
+
+  function handleOnboardingStart() {
+    setShowWelcome(false)
+    setShowTour(true)
+  }
+
+  function handleOnboardingComplete() {
+    setShowTour(false)
+    localStorage.setItem(ONBOARDING_KEY, 'true')
+  }
+
+  function handleOnboardingSkip() {
+    setShowWelcome(false)
+    setShowTour(false)
+    localStorage.setItem(ONBOARDING_KEY, 'true')
+  }
+
+  const routes = (
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/" element={<RootRoute />} />
+        <Route path="/patients" element={<ProtectedLayout><PageGuard permKey="view_patients"><Patients /></PageGuard></ProtectedLayout>} />
+        <Route path="/admit" element={<ProtectedLayout><PageGuard permKey="view_admit"><AdmitPatient /></PageGuard></ProtectedLayout>} />
+        <Route path="/outpatient" element={<ProtectedLayout><PageGuard permKey="view_outpatient"><Outpatient /></PageGuard></ProtectedLayout>} />
+        <Route path="/appointments" element={<ProtectedLayout><PageGuard permKey="view_appointments"><MyAppointments /></PageGuard></ProtectedLayout>} />
+        <Route path="/analytics" element={<ProtectedLayout><PageGuard permKey="view_analytics"><Analytics /></PageGuard></ProtectedLayout>} />
+        <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
+  )
+
+  const modals = (
+    <>
+      {showWelcome && (
+        <WelcomeModal
+          userName={user?.full_name}
+          onStart={handleOnboardingStart}
+          onSkip={handleOnboardingSkip}
+        />
+      )}
+      {showTour && (
+        <TooltipTour onComplete={handleOnboardingComplete} />
+      )}
+    </>
+  )
+
+  if (session) {
+    return (
+      <SessionGuard>
+        {routes}
+        {modals}
+      </SessionGuard>
+    )
+  }
+
+  return (
+    <>
+      {routes}
+      {modals}
+    </>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-        <Route path="/" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
-        <Route path="/patients" element={<ProtectedLayout><Patients /></ProtectedLayout>} />
-        <Route path="/admit" element={<ProtectedLayout><AdmitPatient /></ProtectedLayout>} />
-        <Route path="/outpatient" element={<ProtectedLayout><Outpatient /></ProtectedLayout>} />
-        <Route path="/analytics" element={<ProtectedLayout><Analytics /></ProtectedLayout>} />
-        <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppInner />
     </BrowserRouter>
   )
 }

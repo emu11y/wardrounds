@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Backdrop from './Backdrop'
 import { X, Bell, UserPlus, ArrowRight, LogOut, AlertCircle } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
@@ -22,10 +23,20 @@ function formatTime(ts) {
   return d.toLocaleDateString()
 }
 
-export default function NotificationCenter({ open, onClose }) {
+const LS_CLEARED = 'wr_notifications_cleared_ids'
+const LS_READ = 'wr_notifications_read_ids'
+
+export default function NotificationCenter({ open, onClose, onUnreadCountChange }) {
   const { user } = useAuth()
   const [events, setEvents] = useState([])
-  const [readIds, setReadIds] = useState(new Set())
+  const [clearedIds, setClearedIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_CLEARED) || '[]')) }
+    catch { return new Set() }
+  })
+  const [readIds, setReadIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_READ) || '[]')) }
+    catch { return new Set() }
+  })
 
   useEffect(() => {
     if (!user?.team_id) return
@@ -41,7 +52,7 @@ export default function NotificationCenter({ open, onClose }) {
         .eq('admissions.team_id', user.team_id)
         .order('timestamp', { ascending: false })
         .limit(30)
-      if (data) setEvents(data)
+      if (data) setEvents(data.filter(e => !clearedIds.has(e.id)))
     }
 
     loadEvents()
@@ -54,29 +65,43 @@ export default function NotificationCenter({ open, onClose }) {
         schema: 'public',
         table: 'timeline_events',
       }, (payload) => {
-        setEvents(prev => [payload.new, ...prev].slice(0, 30))
+        setEvents(prev => [payload.new, ...prev]
+          .filter(e => !clearedIds.has(e.id))
+          .slice(0, 30))
       })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
   }, [user?.team_id])
 
+  useEffect(() => {
+    const unread = events.filter(e => !readIds.has(e.id)).length
+    if (onUnreadCountChange) onUnreadCountChange(unread)
+  }, [events, readIds])
+
   function handleMarkAllRead() {
-    setReadIds(new Set(events.map(e => e.id)))
+    const allIds = new Set(events.map(e => e.id))
+    setReadIds(allIds)
+    localStorage.setItem(LS_READ, JSON.stringify([...allIds]))
+    if (onUnreadCountChange) onUnreadCountChange(0)
   }
 
   function handleClearAll() {
-    setEvents([])
+    const newCleared = new Set([...clearedIds, ...events.map(e => e.id)])
+    setClearedIds(newCleared)
+    localStorage.setItem(LS_CLEARED, JSON.stringify([...newCleared]))
     setReadIds(new Set())
+    localStorage.setItem(LS_READ, JSON.stringify([]))
+    setEvents([])
+    if (onUnreadCountChange) onUnreadCountChange(0)
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-end">
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose} />
-      <aside className="relative z-10 w-full max-w-sm h-full glass border-l border-white/20 flex flex-col shadow-glass-md">
-        <div className="border-b border-white/20">
+    <>
+      <Backdrop onClick={onClose} className={`transition-opacity duration-300 ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} />
+      <div className={`glass-rim fixed z-[60] rounded-3xl p-2.5 flex flex-col transition-all duration-300 ease-in-out ${open ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'} inset-x-4 top-[72px] max-h-[75vh] sm:top-[72px] sm:bottom-6 sm:max-h-none sm:right-6 sm:left-auto sm:w-[380px]`}>
+        <div className="surface-shell flex-1 min-h-0">
+        <div className="border-b border-gray-100">
           <div className="flex items-center justify-between p-4">
             <div className="flex items-center gap-2">
               <Bell size={18} className="text-ios-blue" />
@@ -123,8 +148,16 @@ export default function NotificationCenter({ open, onClose }) {
               return (
                 <div
                   key={event.id}
-                  className={`glass-card py-3 px-4 flex gap-3 items-start transition-opacity ${readIds.has(event.id) ? 'opacity-50' : 'opacity-100'}`}
-                  onClick={() => setReadIds(prev => new Set([...prev, event.id]))}
+                  className={`border border-gray-100 rounded-xl py-3 px-4 flex gap-3 items-start transition-opacity cursor-pointer hover:bg-gray-50 ${readIds.has(event.id) ? 'opacity-50' : 'opacity-100'}`}
+                  onClick={() => {
+                    const newRead = new Set([...readIds, event.id])
+                    setReadIds(newRead)
+                    localStorage.setItem(LS_READ, JSON.stringify([...newRead]))
+                    if (onUnreadCountChange) {
+                      const unread = events.filter(e => !newRead.has(e.id)).length
+                      onUnreadCountChange(unread)
+                    }
+                  }}
                 >
                   <div className="mt-0.5">{eventIcon(event.event_type)}</div>
                   <div className="flex-1 min-w-0">
@@ -141,7 +174,8 @@ export default function NotificationCenter({ open, onClose }) {
             })
           )}
         </div>
-      </aside>
-    </div>
+        </div>
+      </div>
+    </>
   )
 }

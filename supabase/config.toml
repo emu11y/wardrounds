@@ -1,0 +1,17 @@
+
+[functions.invite-team-member]
+enabled = true
+verify_jwt = false
+import_map = "./functions/invite-team-member/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/invite-team-member/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/invite-team-member/*.html" ]
+
+[functions.scan-tag]
+enabled = true
+verify_jwt = false
+import_map = "./functions/scan-tag/deno.json"
+entrypoint = "./functions/scan-tag/index.ts"

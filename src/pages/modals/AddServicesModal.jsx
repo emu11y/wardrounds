@@ -2,28 +2,37 @@ import { useState, useEffect } from 'react'
 import { X, Stethoscope, Plus, ChevronDown } from 'lucide-react'
 import { fetchTeamServices, createAdmissionService } from '../../lib/api'
 import { formatKES } from '../../lib/utils'
+import { useAuth } from '../../context/AuthContext'
+import ModalShell from '../../components/ModalShell'
+import { logActivity } from '../../lib/activityLog'
 
 export default function AddServicesModal({ admission, onClose, onSaved, onServiceAdded }) {
+  const { user } = useAuth()
   const [services, setServices] = useState([])
   const [added, setAdded] = useState([])
   const [form, setForm] = useState({ service_id: '', quantity: 1, rendered_date: new Date().toISOString().slice(0, 10) })
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
 
   const patient = admission?.patients
   const teamId = admission?.team_id
 
-  useEffect(() => {
+  function loadServices() {
     if (!teamId) { setFetching(false); return }
+    setFetching(true)
+    setFetchError(false)
     fetchTeamServices(teamId)
       .then(all => {
         const active = (all || []).filter(s => s.status === 'active')
         setServices(active)
         if (active.length) setForm(f => ({ ...f, service_id: active[0].id }))
       })
-      .catch(console.error)
+      .catch(err => { console.error(err); setFetchError(true) })
       .finally(() => setFetching(false))
-  }, [teamId])
+  }
+
+  useEffect(() => { loadServices() }, [teamId])
 
   const selectedService = services.find(s => s.id === form.service_id)
   const total = selectedService ? Number(selectedService.price) * form.quantity : 0
@@ -33,13 +42,19 @@ export default function AddServicesModal({ admission, onClose, onSaved, onServic
     if (!selectedService) return
     setLoading(true)
     try {
-      await createAdmissionService(
+      const amount = Number(selectedService.price) * form.quantity
+      const created = await createAdmissionService(
         admission.id,
         selectedService.id,
         selectedService.service_name,
-        Number(selectedService.price) * form.quantity,
+        amount,
         selectedService.billing_type,
       )
+      await logActivity({
+        user, action: 'add_service', entityType: 'service', entityId: created?.id,
+        patientId: patient?.id, patientName: `${patient?.first_name} ${patient?.last_name}`,
+        details: { service_name: selectedService.service_name, amount },
+      })
       setAdded(prev => [{
         id: Date.now(),
         service_name: selectedService.service_name,
@@ -58,9 +73,9 @@ export default function AddServicesModal({ admission, onClose, onSaved, onServic
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg glass-card max-h-[85vh] flex flex-col">
+    <ModalShell onClose={onClose} maxWidth="max-w-lg">
+      <div className="glass-rim rounded-3xl p-2.5 max-h-[85vh] flex flex-col">
+        <div className="surface-shell flex-1 min-h-0 p-5">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <Stethoscope size={18} className="text-ios-blue" />
@@ -95,6 +110,13 @@ export default function AddServicesModal({ admission, onClose, onSaved, onServic
         {/* Add form */}
         {fetching ? (
           <div className="h-20 bg-ios-gray-5 rounded-2xl animate-pulse" />
+        ) : fetchError ? (
+          <div className="text-center py-4 border-t border-white/20">
+            <p className="text-sm text-red-500 mb-2">Failed to load services</p>
+            <button type="button" onClick={loadServices} className="text-xs font-semibold text-ios-blue underline">
+              Retry
+            </button>
+          </div>
         ) : !teamId ? (
           <p className="text-sm text-ios-gray-1 text-center py-4 border-t border-white/20">
             No team assigned to this admission.
@@ -162,7 +184,8 @@ export default function AddServicesModal({ admission, onClose, onSaved, onServic
             </div>
           </form>
         )}
+        </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

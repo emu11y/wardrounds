@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+.env
+.env.production
+.env.development
+
+# Supabase CLI local link cache
+supabase/.temp
+
+# Session handoff notes (kept in Downloads, not versioned)
+WARDROUNDS_SESSION_HANDOFF*.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

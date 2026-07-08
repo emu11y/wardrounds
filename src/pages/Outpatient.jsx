@@ -1,356 +1,112 @@
-import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Stethoscope, Plus, X, ChevronDown, ChevronUp, Camera, Search, UserPlus, Trash2 } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, X, Stethoscope, Calendar, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabaseClient'
 import {
-  fetchOutpatientVisits, createOutpatientVisit, updateOutpatientVisit, deleteOutpatientVisit,
-  fetchVisitServices, addVisitService, deleteVisitService,
-  searchPatients, createPatient, fetchHospitals,
+  fetchOutpatientVisitsFiltered, fetchOpenOutpatientVisits, fetchPatientInteractions,
+  fetchHospitals, fetchTeamMembers, fetchMembersWithPositions, closeVisit, bookAppointment,
+  addVisitNote, fetchAllPatientVisitNotes, fetchTeamServices,
+  addVisitService, deleteVisitService, ALL_TIME_SLOTS, fmtSlot,
 } from '../lib/api'
-import { extractPatientDataFromTag } from '../lib/hospitalTagReader'
+import NewVisitModal from '../components/NewVisitModal'
+import TopHeader from '../components/TopHeader'
+import ModalShell from '../components/ModalShell'
+import Toast from '../components/Toast'
+import { calcAge, formatDate, todayStr, darken, formatKES } from '../lib/utils'
+import { getOutpatientStatusStyle } from '../lib/statusBadges'
 
-const STATUS_COLORS = {
-  seen: 'bg-green-100 text-green-700',
-  pending: 'bg-amber-100 text-amber-700',
-}
-
-function calcAge(dob) {
-  if (!dob) return null
-  return Math.floor((Date.now() - new Date(dob)) / (365.25 * 24 * 3600 * 1000))
-}
-
-function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function todayStr() {
-  return new Date().toISOString().split('T')[0]
-}
-
-// ─── Visit Services ───────────────────────────────────────────────────────────
-
-function VisitServices({ visitId }) {
-  const [services, setServices] = useState(null)
-  const [newName, setNewName] = useState('')
-  const [newPrice, setNewPrice] = useState('')
-  const [adding, setAdding] = useState(false)
-
-  useEffect(() => {
-    fetchVisitServices(visitId).then(setServices).catch(console.error)
-  }, [visitId])
-
-  async function handleAdd() {
-    if (!newName.trim() || !newPrice) return
-    setAdding(true)
-    try {
-      const svc = await addVisitService(visitId, newName.trim(), Number(newPrice))
-      setServices(prev => [...(prev || []), svc])
-      setNewName('')
-      setNewPrice('')
-    } finally {
-      setAdding(false)
-    }
+function groupVisitsByPatient(visits) {
+  const map = new Map()
+  for (const v of visits) {
+    const existing = map.get(v.patient_id)
+    if (!existing) { map.set(v.patient_id, v); continue }
+    const newer = (v.visit_date + (v.visit_time || '')) > (existing.visit_date + (existing.visit_time || ''))
+    if (newer) map.set(v.patient_id, v)
   }
-
-  async function handleDelete(id) {
-    await deleteVisitService(id)
-    setServices(prev => (prev || []).filter(s => s.id !== id))
-  }
-
-  if (services === null) return <p className="text-xs text-gray-400">Loading…</p>
-
-  const total = services.reduce((sum, s) => sum + Number(s.price), 0)
-
-  return (
-    <div className="space-y-1">
-      {services.map(s => (
-        <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-white/60">
-          <span className="flex-1 text-xs text-gray-700 break-words min-w-0">{s.service_name}</span>
-          <span className="text-xs font-medium text-gray-700 flex-shrink-0">KES {Number(s.price).toLocaleString()}</span>
-          <button
-            onClick={() => handleDelete(s.id)}
-            className="w-5 h-5 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 transition-colors flex-shrink-0"
-          >
-            <X size={10} />
-          </button>
-        </div>
-      ))}
-      {services.length > 0 && (
-        <div className="flex justify-between px-2 pt-1.5 border-t border-gray-100">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</span>
-          <span className="text-xs font-semibold text-gray-700">KES {total.toLocaleString()}</span>
-        </div>
-      )}
-      <div className="flex items-center gap-2 pt-1">
-        <input
-          className="flex-1 text-xs px-3 py-2 rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-          placeholder="Service name"
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
-        />
-        <input
-          className="w-20 text-xs px-3 py-2 rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-          placeholder="Price"
-          type="number"
-          value={newPrice}
-          onChange={e => setNewPrice(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
-        />
-        <button
-          onClick={handleAdd}
-          disabled={adding || !newName.trim() || !newPrice}
-          className="w-7 h-7 flex items-center justify-center rounded-xl bg-ios-blue text-white disabled:opacity-40 transition-opacity flex-shrink-0"
-        >
-          <Plus size={13} />
-        </button>
-      </div>
-    </div>
-  )
+  return Array.from(map.values())
 }
 
-// ─── Visit Card ───────────────────────────────────────────────────────────────
+function countSeen(visits, doctorId, hospitalId) {
+  return visits.filter(v =>
+    (v.status === 'seen' || v.status === 'closed') &&
+    (doctorId   ? v.doctor_id === doctorId  : true) &&
+    (hospitalId ? v.hospital_id        === hospitalId : true)
+  ).length
+}
 
-function VisitCard({ visit, onDelete }) {
-  const [expanded, setExpanded] = useState(false)
-  const [notes, setNotes] = useState(visit.notes || '')
-  const [savingNotes, setSavingNotes] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+// ─── Booking Modal ────────────────────────────────────────────────────────────
+
+function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked }) {
+  const [date, setDate]             = useState(todayStr())
+  const [selectedSlot, setSlot]     = useState(null)
+  const [selectedHospitalId, setHospitalId] = useState(visit.hospital_id || (hospitals[0]?.id ?? null))
+  const [notes, setNotes]           = useState('')
+  const [bookedSlots, setBooked]    = useState([])
+  const [loadingSlots, setLoadingSlots] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError]           = useState(null)
 
   const patient = visit.patients
-  const age = calcAge(patient?.date_of_birth)
   const patientName = patient
-    ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown'
+    ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
     : 'Unknown'
-  const fee = Number(visit.consultation_fee || 0)
 
-  async function handleNotesSave() {
-    if (notes === (visit.notes || '')) return
-    setSavingNotes(true)
-    try {
-      await updateOutpatientVisit(visit.id, { notes })
-    } finally {
-      setSavingNotes(false)
-    }
-  }
-
-  async function handleDelete() {
-    await deleteOutpatientVisit(visit.id)
-    onDelete(visit.id)
-  }
-
-  return (
-    <div className="glass-card rounded-2xl overflow-hidden">
-      <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
-        onClick={() => setExpanded(e => !e)}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm text-gray-900">{patientName}</span>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[visit.status] || 'bg-gray-100 text-gray-600'}`}>
-              {visit.status}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
-            <span className="text-xs text-gray-500">{formatDate(visit.visit_date)}</span>
-            {visit.patient_hospital_id && (
-              <>
-                <span className="text-gray-300 text-xs">·</span>
-                <span className="text-xs font-medium text-blue-500">#{visit.patient_hospital_id}</span>
-              </>
-            )}
-            {age !== null && (
-              <>
-                <span className="text-gray-300 text-xs">·</span>
-                <span className="text-xs text-gray-500">{age} yrs</span>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {fee > 0 && (
-            <span className="text-sm font-semibold text-gray-800">KES {fee.toLocaleString()}</span>
-          )}
-          {expanded
-            ? <ChevronUp size={16} className="text-gray-400" />
-            : <ChevronDown size={16} className="text-gray-400" />}
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 border-t border-white/30 space-y-4 pt-3">
-          {patient?.date_of_birth && (
-            <p className="text-xs text-gray-500">
-              {age !== null ? `${age} yrs · ` : ''}
-              {formatDate(patient.date_of_birth)}
-            </p>
-          )}
-
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Services</p>
-            <VisitServices visitId={visit.id} />
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Notes</p>
-            <textarea
-              className="w-full text-sm px-3 py-2 rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 resize-none"
-              rows={3}
-              placeholder="Visit notes…"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              onBlur={handleNotesSave}
-            />
-            {savingNotes && <p className="text-[10px] text-gray-400 mt-0.5">Saving…</p>}
-          </div>
-
-          {confirmDelete ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-red-600 flex-1">Delete this visit?</span>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="text-xs px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="text-xs px-3 py-1.5 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-1.5 text-xs text-ios-red hover:opacity-75 transition-opacity"
-            >
-              <Trash2 size={13} />
-              Delete Visit
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── New Visit Modal ──────────────────────────────────────────────────────────
-
-function NewVisitModal({ teamId, hospitals, onClose, onCreated }) {
-  const [modalTab, setModalTab] = useState('search')
-
-  // Scan
-  const [scanPreview, setScanPreview] = useState(null)
-  const [scanError, setScanError] = useState(null)
-  const [isScanning, setIsScanning] = useState(false)
-  const fileInputRef = useRef(null)
-
-  // Search
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searching, setSearching] = useState(false)
-
-  // Patient
-  const [selectedPatient, setSelectedPatient] = useState(null)
-  const [newFirstName, setNewFirstName] = useState('')
-  const [newLastName, setNewLastName] = useState('')
-  const [newDob, setNewDob] = useState('')
-
-  // Visit form
-  const [patientHospitalId, setPatientHospitalId] = useState('')
-  const [consultationFee, setConsultationFee] = useState('')
-  const [visitDate, setVisitDate] = useState(todayStr())
-  const [status, setStatus] = useState('seen')
-  const [notes, setNotes] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState(null)
-
-  // Debounced search
+  // Fetch already-booked slots for the chosen date + hospital
   useEffect(() => {
-    if (!searchQuery.trim() || modalTab !== 'search') {
-      setSearchResults([])
-      return
-    }
-    setSearching(true)
-    const t = setTimeout(async () => {
-      try {
-        const results = await searchPatients(teamId, searchQuery)
-        setSearchResults(results || [])
-      } catch {
-        setSearchResults([])
-      } finally {
-        setSearching(false)
-      }
-    }, 300)
-    return () => clearTimeout(t)
-  }, [searchQuery, teamId, modalTab])
+    if (!date || !teamId) return
+    setLoadingSlots(true)
+    supabase
+      .from('outpatient_visits')
+      .select('visit_time, status')
+      .eq('team_id', teamId)
+      .eq('visit_date', date)
+      .in('status', ['scheduled', 'seen', 'pending'])
+      .then(({ data }) => {
+        const taken = (data || []).map(v => {
+          if (!v.visit_time) return null
+          const d = new Date(v.visit_time)
+          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        }).filter(Boolean)
+        setBooked(taken)
+        setSlot(null)
+      })
+      .finally(() => setLoadingSlots(false))
+  }, [date, teamId])
 
-  async function handleScanFile(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setScanError(null)
-    setIsScanning(true)
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target.result
-      const base64 = dataUrl.split(',')[1]
-      setScanPreview(dataUrl)
-      try {
-        const extracted = await extractPatientDataFromTag(base64, hospitals, file.type)
-        if (extracted.firstName) setNewFirstName(extracted.firstName)
-        if (extracted.lastName) setNewLastName(extracted.lastName)
-        if (extracted.dateOfBirth) setNewDob(extracted.dateOfBirth)
-        if (extracted.patientHospitalId) setPatientHospitalId(extracted.patientHospitalId)
-        setModalTab('new')
-      } catch (err) {
-        setScanError(err.message)
-      } finally {
-        setIsScanning(false)
-      }
-    }
-    reader.readAsDataURL(file)
+  function prevDay() {
+    const d = new Date(date); d.setDate(d.getDate() - 1)
+    const s = d.toISOString().split('T')[0]
+    if (s >= todayStr()) setDate(s)
+  }
+  function nextDay() {
+    const d = new Date(date); d.setDate(d.getDate() + 1)
+    setDate(d.toISOString().split('T')[0])
   }
 
-  async function handleSubmit() {
+  const formattedDate = date
+    ? new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : ''
+
+  const availableCount = ALL_TIME_SLOTS.filter(s => !bookedSlots.includes(s)).length
+  const bookedCount    = bookedSlots.length
+
+  async function handleConfirm() {
+    if (!date || !selectedSlot) { setError('Please select a date and time slot.'); return }
+    if (!selectedHospitalId)    { setError('Please select a hospital.'); return }
     setError(null)
     setSubmitting(true)
     try {
-      let patient = selectedPatient
-
-      if (!patient && modalTab === 'new') {
-        if (!newFirstName.trim() && !newLastName.trim()) {
-          setError('Please enter a patient name.')
-          setSubmitting(false)
-          return
-        }
-        patient = await createPatient({
-          first_name: newFirstName.trim(),
-          last_name: newLastName.trim(),
-          date_of_birth: newDob || null,
-          team_id: teamId,
-        })
-      }
-
-      if (!patient) {
-        setError('Please select or create a patient.')
-        setSubmitting(false)
-        return
-      }
-
-      const visit = await createOutpatientVisit({
-        patient_id: patient.id,
-        team_id: teamId,
-        visit_date: visitDate,
-        visit_time: new Date().toISOString(),
-        consultation_fee: Number(consultationFee) || 0,
-        status,
-        notes: notes || null,
-        patient_hospital_id: patientHospitalId || null,
-      })
-
-      onCreated(visit)
+      // Carry forward the visit's actual assigned doctor — never fall back to whoever is
+      // clicking "Book Appointment" (could be front-desk/admin staff, not the treating doctor).
+      const appt = await bookAppointment(
+        visit.patient_id, selectedHospitalId, teamId, userId, date, selectedSlot, notes,
+        visit.doctor_id,
+      )
+      // Grey out the confirmed slot immediately
+      setBooked(prev => [...prev, selectedSlot])
+      setSlot(null)
+      onBooked(appt)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -358,18 +114,19 @@ function NewVisitModal({ teamId, hospitals, onClose, onCreated }) {
     }
   }
 
-  const modalTabs = [
-    { key: 'scan', Icon: Camera, label: 'Scan' },
-    { key: 'search', Icon: Search, label: 'Search' },
-    { key: 'new', Icon: UserPlus, label: 'New Patient' },
-  ]
+  const selectedHospital = hospitals.find(h => h.id === selectedHospitalId)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="glass w-full max-w-md rounded-3xl border border-white/30 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+    <ModalShell onClose={onClose}>
+      <div className="glass-rim w-full max-w-lg rounded-3xl p-2.5 max-h-[90vh] flex flex-col">
+        <div className="surface-shell flex-1 min-h-0">
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
-          <h2 className="font-bold text-base">New Outpatient Visit</h2>
+          <div>
+            <h2 className="font-bold text-base text-gray-900">Book Appointment</h2>
+            <p className="text-xs text-gray-500">{patientName}</p>
+          </div>
           <button
             onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors"
@@ -378,203 +135,164 @@ function NewVisitModal({ teamId, hospitals, onClose, onCreated }) {
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-5 pb-5 space-y-4">
-          {/* Tab row */}
-          <div className="flex glass rounded-2xl p-1 gap-1">
-            {modalTabs.map(({ key, Icon, label }) => (
-              <button
-                key={key}
-                onClick={() => setModalTab(key)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                  modalTab === key ? 'bg-ios-blue text-white shadow-ios-card' : 'text-gray-500 hover:bg-black/5'
-                }`}
-              >
-                <Icon size={13} />
-                {label}
-              </button>
-            ))}
+        {/* Date picker row */}
+        <div className="px-5 pb-3 flex-shrink-0">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Date</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={prevDay}
+              disabled={date <= todayStr()}
+              className="w-8 h-8 rounded-xl bg-black/[0.06] flex items-center justify-center hover:bg-black/10 transition-colors disabled:opacity-30"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <input
+              type="date"
+              value={date}
+              min={todayStr()}
+              onChange={e => setDate(e.target.value)}
+              className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
+            />
+            <button
+              onClick={nextDay}
+              className="w-8 h-8 rounded-xl bg-black/[0.06] flex items-center justify-center hover:bg-black/10 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Slot grid */}
+        <div className="px-5 pb-3 overflow-y-auto flex-1">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-800">{formattedDate}</p>
+            {!loadingSlots && (
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 text-[11px] text-green-600">
+                  <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+                  {availableCount} available
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-blue-500">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+                  {bookedCount} booked
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Scan tab */}
-          {modalTab === 'scan' && (
-            <div className="space-y-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleScanFile}
-              />
-              {scanPreview ? (
-                <img src={scanPreview} alt="Tag preview" className="w-full max-h-48 object-contain rounded-2xl" />
-              ) : (
-                <div
-                  className="flex flex-col items-center justify-center gap-3 py-10 rounded-2xl bg-white/40 border-2 border-dashed border-gray-200 cursor-pointer hover:bg-white/60 transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Camera size={28} className="text-ios-blue" />
-                  <p className="text-sm text-gray-500">Tap to scan patient tag</p>
-                </div>
-              )}
-              {isScanning && (
-                <p className="text-xs text-center text-ios-gray-1 animate-pulse">Reading tag…</p>
-              )}
-              {scanError && <p className="text-xs text-red-500 text-center">{scanError}</p>}
-              {(scanPreview || scanError) && !isScanning && (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full text-sm text-center text-ios-blue font-medium"
-                >
-                  Scan again
-                </button>
-              )}
+          {loadingSlots ? (
+            <div className="flex items-center justify-center py-8 gap-2">
+              <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
+              <span className="text-xs text-gray-400">Loading slots…</span>
             </div>
-          )}
-
-          {/* Search tab */}
-          {modalTab === 'search' && (
-            <div className="space-y-2">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  className="w-full pl-8 pr-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-                  placeholder="Search by name…"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              {searching && <p className="text-xs text-ios-gray-1 text-center py-2">Searching…</p>}
-              <div className="space-y-1.5">
-                {searchResults.map(p => (
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {ALL_TIME_SLOTS.map(slot => {
+                const isBooked   = bookedSlots.includes(slot)
+                const isSelected = selectedSlot === slot
+                return (
                   <button
-                    key={p.id}
-                    onClick={() => setSelectedPatient(p)}
-                    className={`w-full text-left px-3 py-2.5 rounded-2xl text-sm transition-all ${
-                      selectedPatient?.id === p.id
-                        ? 'bg-ios-blue text-white shadow-ios-card'
-                        : 'bg-white/60 hover:bg-white/80'
+                    key={slot}
+                    onClick={() => !isBooked && setSlot(isSelected ? null : slot)}
+                    disabled={isBooked}
+                    className={`rounded-2xl px-2 py-3 text-left transition-all border ${
+                      isBooked
+                        ? 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-60'
+                        : isSelected
+                          ? 'bg-ios-blue border-ios-blue text-white shadow-ios-card'
+                          : 'bg-green-50 border-green-100 hover:bg-green-100'
                     }`}
                   >
-                    <p className="font-medium">{p.first_name} {p.last_name}</p>
-                    {p.date_of_birth && (
-                      <p className={`text-xs mt-0.5 ${selectedPatient?.id === p.id ? 'text-white/70' : 'text-gray-500'}`}>
-                        {calcAge(p.date_of_birth)} yrs · {formatDate(p.date_of_birth)}
-                      </p>
-                    )}
+                    <p className={`text-xs font-bold leading-tight ${isBooked ? 'text-gray-400' : isSelected ? 'text-white' : 'text-green-700'}`}>
+                      {fmtSlot(slot)}
+                    </p>
+                    <p className={`text-[10px] mt-0.5 ${isBooked ? 'text-gray-400' : isSelected ? 'text-white/80' : 'text-green-500'}`}>
+                      {isBooked ? 'Booked' : 'Available'}
+                    </p>
                   </button>
-                ))}
-              </div>
-              {selectedPatient && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-2xl border border-green-100">
-                  <span className="text-xs text-green-700 font-medium flex-1">
-                    {selectedPatient.first_name} {selectedPatient.last_name} selected
-                  </span>
-                  <button onClick={() => setSelectedPatient(null)} className="text-green-500 hover:text-green-700">
-                    <X size={13} />
-                  </button>
-                </div>
-              )}
+                )
+              })}
             </div>
           )}
+        </div>
 
-          {/* New Patient tab */}
-          {modalTab === 'new' && (
-            <div className="space-y-2">
-              {scanPreview && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-2xl border border-blue-100">
-                  <Camera size={13} className="text-ios-blue flex-shrink-0" />
-                  <span className="text-xs text-blue-700">Fields pre-filled from tag scan</span>
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-                  placeholder="First name"
-                  value={newFirstName}
-                  onChange={e => setNewFirstName(e.target.value)}
-                />
-                <input
-                  className="flex-1 px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-                  placeholder="Last name"
-                  value={newLastName}
-                  onChange={e => setNewLastName(e.target.value)}
-                />
-              </div>
-              <input
-                className="w-full px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-                type="date"
-                value={newDob}
-                onChange={e => setNewDob(e.target.value)}
-              />
+        {/* Hospital picker — appears after slot selected */}
+        {selectedSlot && hospitals.length > 1 && (
+          <div className="px-5 pb-3 flex-shrink-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Location</p>
+            <div className="flex gap-2 flex-wrap">
+              {hospitals.filter(h => h.is_active !== false).map(h => {
+                const isActive = selectedHospitalId === h.id
+                const color = h.color || '#3B82F6'
+                return (
+                  <button
+                    key={h.id}
+                    onClick={() => setHospitalId(h.id)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border"
+                    style={{
+                      backgroundColor: isActive ? color : color + '15',
+                      borderColor: isActive ? color : color + '40',
+                      color: isActive ? '#fff' : color,
+                    }}
+                  >
+                    {h.name}
+                  </button>
+                )
+              })}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Divider */}
-          <div className="border-t border-white/40" />
-
-          {/* Common visit fields */}
-          <div className="space-y-2">
-            <input
-              className="w-full px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-              placeholder="Hospital IP number (optional)"
-              value={patientHospitalId}
-              onChange={e => setPatientHospitalId(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <input
-                className="flex-1 px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-                type="number"
-                placeholder="Consultation fee (KES)"
-                value={consultationFee}
-                onChange={e => setConsultationFee(e.target.value)}
-              />
-              <input
-                className="flex-1 px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-                type="date"
-                value={visitDate}
-                onChange={e => setVisitDate(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              {['seen', 'pending'].map(s => (
-                <button
-                  key={s}
-                  onClick={() => setStatus(s)}
-                  className={`flex-1 py-2 rounded-2xl text-sm font-medium capitalize transition-all ${
-                    status === s
-                      ? s === 'seen'
-                        ? 'bg-green-500 text-white shadow-sm'
-                        : 'bg-amber-500 text-white shadow-sm'
-                      : 'bg-white/60 text-gray-500 hover:bg-white/80'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+        {/* Notes + actions */}
+        <div className="px-5 pb-5 space-y-3 flex-shrink-0 border-t border-black/[0.05] pt-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-1.5">Notes (optional)</label>
             <textarea
-              className="w-full px-3 py-2.5 text-sm rounded-2xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 resize-none"
-              rows={2}
-              placeholder="Notes (optional)"
               value={notes}
               onChange={e => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Reason for follow-up…"
+              className="w-full px-3 py-2 text-sm rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 resize-none"
             />
           </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-2xl text-sm font-semibold bg-black/[0.06] text-gray-700 hover:bg-black/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={submitting || !selectedSlot}
+              className="flex-1 py-2.5 rounded-2xl text-sm font-semibold bg-ios-blue text-white disabled:opacity-40 transition-opacity shadow-ios-card"
+            >
+              {submitting
+                ? 'Booking…'
+                : selectedSlot
+                  ? `Confirm ${fmtSlot(selectedSlot)}${selectedHospital ? ` · ${selectedHospital.name}` : ''}`
+                  : 'Select a slot'}
+            </button>
+          </div>
 
-          {error && <p className="text-xs text-red-500 text-center">{error}</p>}
-
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="w-full py-3 rounded-2xl bg-ios-blue text-white font-semibold text-sm disabled:opacity-50 transition-opacity shadow-ios-card"
-          >
-            {submitting ? 'Creating…' : 'Create Visit'}
-          </button>
+          {/* Legend */}
+          <div className="flex items-center gap-4 justify-center pt-1">
+            {[
+              { color: 'bg-green-400', label: 'Available' },
+              { color: 'bg-ios-blue', label: 'Selected' },
+              { color: 'bg-gray-300', label: 'Booked' },
+            ].map(({ color, label }) => (
+              <span key={label} className="flex items-center gap-1 text-[10px] text-gray-400">
+                <span className={`w-2 h-2 rounded-full ${color}`} />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 
@@ -582,57 +300,248 @@ function NewVisitModal({ teamId, hospitals, onClose, onCreated }) {
 
 export default function Outpatient() {
   const { user } = useAuth()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') || 'today'
+  const navigate = useNavigate()
 
   const [visits, setVisits] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
   const [hospitals, setHospitals] = useState([])
+  const [teamMembers, setTeamMembers] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  // Filters
+  const [selectedDoctor, setSelectedDoctor] = useState(null)  // null = all doctors
+  const [selectedHospital, setSelectedHospital] = useState(null)
+
+  // Modals
+  const [bookingVisit, setBookingVisit] = useState(null)
+  const [showNewVisitModal, setShowNewVisitModal] = useState(false)
+  const [toast, setToast] = useState(null)
+  function showToast(message, type = 'error') {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 4000)
+  }
+
+  // Expandable cards
+  const [expandedVisitId, setExpandedVisitId] = useState(null)
+  const [interactionsCache, setInteractionsCache] = useState({})
+  const [closeVisitModal, setCloseVisitModal] = useState(null)  // visit object being closed, or null
+  const [closingVisitId, setClosingVisitId] = useState(null)
+  const [actionsOpenVisitId, setActionsOpenVisitId] = useState(null)
+
+  const [allPatientNotes, setAllPatientNotes] = useState({})
+  const [addingNoteVisitId, setAddingNoteVisitId] = useState(null)
+  const [noteText, setNoteText] = useState('')
+  const [submittingNote, setSubmittingNote] = useState(false)
+  const [servicesCache, setServicesCache] = useState({})
+  const [addServiceModal, setAddServiceModal] = useState(null)  // null | { visitId, hospitalId }
+  const [serviceSearch, setServiceSearch] = useState('')
+  const [teamServices, setTeamServices] = useState([])
+  const [addingServiceId, setAddingServiceId] = useState(null)
+  const [selectedServices, setSelectedServices] = useState([])
 
   useEffect(() => {
+    if (!user?.team_id) return
+    Promise.all([
+      fetchHospitals(user.team_id),
+      fetchMembersWithPositions(user.team_id),
+      fetchTeamServices(user.team_id),
+    ]).then(([h, t, s]) => {
+      setHospitals(h || [])
+      setTeamMembers(t || [])
+      setTeamServices(s || [])
+    }).catch(err => { console.error(err); showToast('Failed to load hospitals/doctors/services.') })
+  }, [user?.team_id])
+
+  const loadVisits = useCallback(async () => {
     if (!user?.team_id) return
     setLoading(true)
-    fetchOutpatientVisits(user.team_id)
-      .then(setVisits)
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    try {
+      const today = todayStr()
+      // Today's encounters plus any still-open ("seen") visits from a prior day that
+      // haven't been closed yet — a visit must not vanish from the queue just because
+      // midnight passed before the doctor closed it.
+      const [todayData, openData] = await Promise.all([
+        fetchOutpatientVisitsFiltered(
+          user.team_id,
+          null,
+          null,
+          today,
+          today,
+          true,
+        ),
+        fetchOpenOutpatientVisits(user.team_id),
+      ])
+      const merged = new Map()
+      for (const v of todayData || []) merged.set(v.id, v)
+      for (const v of openData || []) merged.set(v.id, v)
+      setVisits(Array.from(merged.values()))
+    } catch (err) {
+      console.error(err)
+      showToast('Failed to load visits — pull to refresh or try again.')
+    } finally {
+      setLoading(false)
+    }
   }, [user?.team_id])
 
-  useEffect(() => {
-    if (!user?.team_id) return
-    fetchHospitals(user.team_id).then(setHospitals).catch(console.error)
-  }, [user?.team_id])
+  useEffect(() => { loadVisits() }, [loadVisits])
 
-  const today = todayStr()
-  const filteredVisits = tab === 'today'
-    ? visits.filter(v => v.visit_date === today)
-    : visits
+  async function handleExpandVisit(visit) {
+    if (expandedVisitId === visit.id) {
+      setExpandedVisitId(null)
+      return
+    }
+    setExpandedVisitId(visit.id)
+    setAddingNoteVisitId(null)
 
-  function handleVisitCreated(visit) {
-    setVisits(prev => [visit, ...prev])
-    setShowModal(false)
+    let visitIds = []
+    if (!interactionsCache[visit.patient_id]) {
+      try {
+        const interactions = await fetchPatientInteractions(visit.patient_id)
+        setInteractionsCache(prev => ({ ...prev, [visit.patient_id]: interactions }))
+        visitIds = interactions.filter(e => e.kind === 'visit').map(e => e.id)
+      } catch (err) {
+        console.error(err)
+        showToast('Failed to load visit history for this patient.')
+        visitIds = [visit.id]
+      }
+    } else {
+      visitIds = interactionsCache[visit.patient_id].filter(e => e.kind === 'visit').map(e => e.id)
+    }
+    if (visitIds.length === 0) visitIds = [visit.id]
+
+    if (!Object.prototype.hasOwnProperty.call(allPatientNotes, visit.patient_id)) {
+      fetchAllPatientVisitNotes(visit.patient_id, visitIds)
+        .then(notes => setAllPatientNotes(prev => ({ ...prev, [visit.patient_id]: notes })))
+        .catch(() => setAllPatientNotes(prev => ({ ...prev, [visit.patient_id]: [] })))
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(servicesCache, visit.id)) {
+      setServicesCache(prev => ({ ...prev, [visit.id]: visit.visit_services || [] }))
+    }
   }
 
-  function handleVisitDeleted(id) {
-    setVisits(prev => prev.filter(v => v.id !== id))
+  async function handleCloseVisit(visitId) {
+    setClosingVisitId(visitId)
+    try {
+      const updated = await closeVisit(visitId)
+      setVisits(prev => prev.map(v => v.id === updated.id ? { ...v, status: 'closed' } : v))
+      setCloseVisitModal(null)
+      setExpandedVisitId(null)
+    } catch (err) {
+      console.error(err)
+      showToast('Failed to close the visit — please try again.')
+    } finally {
+      setClosingVisitId(null)
+    }
   }
+
+  function handleBooked(appt) {
+    setBookingVisit(null)
+    setVisits(prev => [appt, ...prev])
+  }
+
+  async function handleVisitCreated() {
+    setInteractionsCache({})
+    setAllPatientNotes({})
+    setServicesCache({})
+    await loadVisits()
+  }
+
+  async function handleAddNote(visitId, patientId) {
+    if (!noteText.trim()) return
+    setSubmittingNote(true)
+    try {
+      await addVisitNote(visitId, noteText.trim(), user.id)
+      setNoteText('')
+      setAddingNoteVisitId(null)
+      const cached = interactionsCache[patientId] || []
+      const visitIds = cached.filter(e => e.kind === 'visit').map(e => e.id)
+      const ids = visitIds.length > 0 ? visitIds : [visitId]
+      const refreshed = await fetchAllPatientVisitNotes(patientId, ids)
+      setAllPatientNotes(prev => ({ ...prev, [patientId]: refreshed }))
+    } catch (err) {
+      console.error(err)
+      showToast('Failed to save the note — please try again.')
+    } finally {
+      setSubmittingNote(false)
+    }
+  }
+
+  async function handleAddService(visitId, svc) {
+    setAddingServiceId(svc.id)
+    try {
+      const added = await addVisitService(visitId, svc.service_name, svc.price ?? null)
+      setServicesCache(prev => ({ ...prev, [visitId]: [...(prev[visitId] || []), added] }))
+      setAddServiceModal(null)
+      setServiceSearch('')
+    } catch (err) {
+      console.error(err)
+      showToast('Failed to add the service — please try again.')
+    } finally {
+      setAddingServiceId(null)
+    }
+  }
+
+  async function handleDeleteService(visitId, serviceId) {
+    try {
+      await deleteVisitService(serviceId)
+      setServicesCache(prev => ({
+        ...prev,
+        [visitId]: (prev[visitId] || []).filter(s => s.id !== serviceId),
+      }))
+    } catch (err) {
+      console.error(err)
+      showToast('Failed to remove the service — please try again.')
+    }
+  }
+
+  async function handleAddSelectedServices() {
+    if (!addServiceModal || selectedServices.length === 0) return
+    setAddingServiceId('multi')
+    try {
+      const added = await Promise.all(
+        selectedServices.map(svc =>
+          addVisitService(addServiceModal.visitId, svc.service_name, svc.price ?? null)
+        )
+      )
+      setServicesCache(prev => ({
+        ...prev,
+        [addServiceModal.visitId]: [...(prev[addServiceModal.visitId] || []), ...added],
+      }))
+      setAddServiceModal(null)
+      setSelectedServices([])
+      setServiceSearch('')
+    } catch (err) {
+      console.error('Failed to add services:', err)
+      showToast('Failed to add the selected services — please try again.')
+    } finally {
+      setAddingServiceId(null)
+    }
+  }
+
+  // Only show hospital pills that appear in today's visits
+  const hospitalPills = hospitals.filter(h => visits.some(v => v.hospital_id === h.id))
+
+  // Client-side filter for the displayed visit list; visits itself stays unfiltered for counts
+  const filteredVisits = visits.filter(v =>
+    (selectedDoctor   ? v.doctor_id === selectedDoctor   : true) &&
+    (selectedHospital ? v.hospital_id        === selectedHospital : true)
+  )
 
   return (
     <div className="flex flex-col min-h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-ios-blue flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm">W</span>
-          </div>
-          <div>
-            <h1 className="font-bold text-lg leading-tight">Outpatient</h1>
-            {user?.email && <p className="text-xs text-ios-gray-1">{user.email}</p>}
-          </div>
+      <TopHeader title="Outpatient" />
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
+
+      {/* Page sub-header: date label + New Visit button — always rendered */}
+      <div className="px-5 pt-3 pb-3 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Today</p>
+          <p className="text-xs text-ios-gray-1">
+            {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => setShowNewVisitModal(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-ios-blue text-white text-sm font-medium shadow-ios-card"
         >
           <Plus size={15} />
@@ -640,58 +549,715 @@ export default function Outpatient() {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="px-5 pb-3">
-        <div className="inline-flex glass rounded-2xl p-1 gap-1">
-          {[['today', 'Today'], ['all', 'All Visits']].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setSearchParams({ tab: key })}
-              className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-all ${
-                tab === key
-                  ? 'bg-ios-blue text-white shadow-ios-card'
-                  : 'text-gray-600 hover:bg-black/5'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* Filters panel */}
+      <div className="px-5 pb-4 space-y-3">
+        {/* Doctor filter */}
+        {teamMembers.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Doctor</p>
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => setSelectedDoctor(null)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  selectedDoctor === null ? 'bg-ios-blue text-white' : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
+                }`}
+              >
+                All
+                {countSeen(visits, null, selectedHospital) > 0 && (
+                  <span className={`text-[9px] font-bold rounded-full px-1.5 ${
+                    selectedDoctor === null ? 'bg-white/25 text-white' : 'bg-black/10 text-gray-500'
+                  }`}>{countSeen(visits, null, selectedHospital)}</span>
+                )}
+              </button>
+              {teamMembers.filter(doc => doc.is_clinical === true).map(doc => {
+                const isDocActive = selectedDoctor === doc.id
+                return (
+                  <button
+                    key={doc.id}
+                    onClick={() => setSelectedDoctor(isDocActive ? null : doc.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                      isDocActive ? 'bg-ios-blue text-white' : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
+                    }`}
+                  >
+                    {doc.full_name}
+                    {countSeen(visits, doc.id, selectedHospital) > 0 && (
+                      <span className={`text-[9px] font-bold rounded-full px-1.5 ${
+                        isDocActive ? 'bg-white/25 text-white' : 'bg-black/10 text-gray-500'
+                      }`}>{countSeen(visits, doc.id, selectedHospital)}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Hospital filter */}
+        {hospitalPills.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Hospital</p>
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => setSelectedHospital(null)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                  !selectedHospital ? 'bg-ios-blue text-white' : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
+                }`}
+              >
+                All
+                {countSeen(visits, selectedDoctor, null) > 0 && (
+                  <span className={`text-[9px] font-bold rounded-full px-1.5 ${
+                    !selectedHospital ? 'bg-white/25 text-white' : 'bg-black/10 text-gray-500'
+                  }`}>{countSeen(visits, selectedDoctor, null)}</span>
+                )}
+              </button>
+              {hospitalPills.map(h => {
+                const base = h.color || '#3B82F6'
+                const isActive = selectedHospital === h.id
+                const cnt = countSeen(visits, selectedDoctor, h.id)
+                return (
+                  <button
+                    key={h.id}
+                    onClick={() => setSelectedHospital(isActive ? null : h.id)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-white flex items-center gap-1.5"
+                    style={{ backgroundColor: isActive ? base : base + '60' }}
+                  >
+                    {h.name}
+                    {cnt > 0 && (
+                      <span className="text-[9px] font-bold rounded-full px-1.5 bg-white/25">{cnt}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Visit list */}
       <div className="flex-1 px-4 pb-4 space-y-3">
         {loading ? (
-          <p className="text-sm text-ios-gray-1 text-center py-8">Loading…</p>
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => <div key={i} className="border border-gray-200 rounded-3xl bg-white/70 h-24 animate-pulse" />)}
+          </div>
         ) : filteredVisits.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-14 h-14 rounded-3xl bg-ios-blue/10 flex items-center justify-center">
               <Stethoscope size={24} className="text-ios-blue" />
             </div>
-            <p className="text-sm text-ios-gray-1">
-              {tab === 'today' ? 'No visits today' : 'No visits yet'}
-            </p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="text-sm font-medium text-ios-blue"
-            >
-              Record first visit
-            </button>
+            <p className="text-sm text-ios-gray-1">No visits today</p>
           </div>
-        ) : (
-          filteredVisits.map(visit => (
-            <VisitCard key={visit.id} visit={visit} onDelete={handleVisitDeleted} />
-          ))
-        )}
+        ) : (() => {
+          const hospitalMap = Object.fromEntries(hospitals.map(h => [h.id, h]))
+          return groupVisitsByPatient(filteredVisits).map(visit => {
+            const patient = visit.patients
+            const age = calcAge(patient?.date_of_birth)
+            const patientName = patient
+              ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() || 'Unknown'
+              : 'Unknown'
+            const initials = [patient?.first_name?.[0], patient?.last_name?.[0]]
+              .filter(Boolean).map(s => s.toUpperCase()).join('') || '?'
+            const accentColor = visit.hospitals?.color || '#007AFF'
+            const visitTimeStr = visit.visit_time
+              ? new Date(visit.visit_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+              : null
+            const isExpanded = expandedVisitId === visit.id
+            const isOwn = visit.doctor_id === user?.id || user?.role === 'admin'
+            const canAct = isOwn && visit.status !== 'closed' && visit.status !== 'scheduled'
+            const isClosing = closingVisitId === visit.id
+            const interactions = interactionsCache[visit.patient_id] ?? null
+
+            return (
+              <div
+                key={visit.id}
+                className="rounded-3xl overflow-hidden ring-2 ring-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.08)]"
+                style={{ backgroundColor: accentColor + '08' }}
+              >
+                {/* ── HEADER ── */}
+                <div
+                  className="p-4 cursor-pointer"
+                  onClick={() => handleExpandVisit(visit)}
+                  style={{ background: `linear-gradient(135deg, ${accentColor} 0%, ${darken(accentColor)} 100%)` }}
+                >
+                  {/* ROW 1: avatar | name | status + chevron */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-white/25 backdrop-blur flex items-center justify-center">
+                      <span className="text-white font-semibold text-sm">{initials}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white break-words leading-tight uppercase">{patientName}</p>
+                      {visit.patient_hospital_id && (
+                        <p className="text-white/60 text-xs mt-0.5">#{visit.patient_hospital_id}</p>
+                      )}
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <p className="text-white/70 text-xs capitalize">{visit.status}</p>
+                        <span className="text-white/70">
+                          {isExpanded
+                            ? <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="18 15 12 9 6 15"/></svg>
+                            : <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="6 9 12 15 18 9"/></svg>
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ROW 2: age + hospital | visit date + time */}
+                  <div className="mt-2 flex items-center justify-between text-white/80 text-xs">
+                    <div className="flex items-center gap-1">
+                      {age !== null && <span>{age} yrs</span>}
+                      {age !== null && visit.hospitals?.name && <span className="mx-0.5">·</span>}
+                      {visit.hospitals?.name && <span>{visit.hospitals.name}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {visit.visit_date && (
+                        <div className="flex items-center gap-1">
+                          <Calendar size={11} className="text-white/70 flex-shrink-0" />
+                          <span>{formatDate(visit.visit_date)}</span>
+                        </div>
+                      )}
+                      {visitTimeStr && (
+                        <div className="flex items-center gap-1">
+                          <Clock size={11} className="text-white/70 flex-shrink-0" />
+                          <span>{visitTimeStr}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── EXPANDED CONTENT ── */}
+                <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-[3000px]' : 'max-h-0'}`}>
+                  <div className="p-4 space-y-3" style={{ backgroundColor: accentColor + '08' }}>
+
+                    {/* ── VISIT TIMELINE sub-card ── */}
+                    <section
+                      className="rounded-3xl border border-white/50"
+                      style={{ backgroundColor: accentColor + '20', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+                    >
+                      <div className="p-4">
+                        <p className="text-xs font-bold tracking-wide" style={{ color: accentColor }}>VISIT TIMELINE</p>
+                      </div>
+                      <div className="px-4 pb-4 border-t border-white/30">
+                        {interactions === null ? (
+                          <div className="flex items-center gap-2 py-2">
+                            <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
+                            <span className="text-xs text-gray-400">Loading…</span>
+                          </div>
+                        ) : interactions.length === 0 ? (
+                          <p className="text-xs text-gray-400 py-1">No interactions yet</p>
+                        ) : (
+                          <div>
+                            {interactions.map((entry, i) => {
+                              const dotColor = entry.hospitalColor || hospitalMap[entry.hospital_id]?.color || '#3B82F6'
+                              const entryHospital = entry.hospitalName || hospitalMap[entry.hospital_id]?.name || null
+                              const isNow = entry.kind === 'visit' && entry.id === visit.id
+                              const isLast = i === interactions.length - 1
+                              const entryTime = entry.time
+                                ? new Date(entry.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                                : null
+                              return (
+                                <div key={`${entry.kind}-${entry.id}`} className="flex gap-2.5 pt-2">
+                                  <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                                    <div
+                                      className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white flex-shrink-0"
+                                      style={{ backgroundColor: dotColor }}
+                                    />
+                                    {!isLast && (
+                                      <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '1.5rem' }} />
+                                    )}
+                                  </div>
+                                  <div className={`flex-1 min-w-0 ${!isLast ? 'pb-1' : ''}`}>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs font-semibold text-gray-800">
+                                        {entry.kind === 'admission'
+                                          ? `🏥 Admitted${entry.ward ? ` · ${entry.ward}` : ''}`
+                                          : '🩺 Outpatient visit'}
+                                      </span>
+                                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full capitalize ${getOutpatientStatusStyle(entry.status)}`}>
+                                        {entry.status}
+                                      </span>
+                                      {isNow && <span className="text-[10px] text-ios-blue font-semibold">← now</span>}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                      {entryHospital && <span className="text-[10px] text-gray-400">{entryHospital}</span>}
+                                      <span className="text-[10px] text-gray-400">
+                                        {formatDate(entry.date)}
+                                        {entry.kind === 'admission' && entry.discharge_date
+                                          ? ` → ${formatDate(entry.discharge_date)}`
+                                          : entryTime ? ` · ${entryTime}` : ''}
+                                      </span>
+                                      {entry.serviceCount > 0 && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/[0.06] text-gray-500">
+                                          {entry.serviceCount} service{entry.serviceCount !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+
+                    {/* ── SERVICES sub-card ── */}
+                    {(() => {
+                      const visitServices = servicesCache[visit.id] ?? null
+                      const svcTotal = (visitServices || []).reduce((s, sv) => s + Number(sv.price || 0), 0)
+                      return (
+                        <section
+                          className="rounded-3xl border border-white/50"
+                          style={{ backgroundColor: accentColor + '20', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+                        >
+                          <div className="p-4">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-bold tracking-wide" style={{ color: accentColor }}>
+                                SERVICES{visitServices?.length ? ` (${visitServices.length})` : ''}
+                              </p>
+                              {svcTotal > 0 && (
+                                <span className="text-[13px] font-bold tabular-nums text-gray-900">
+                                  {formatKES(svcTotal)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="px-4 pb-4 border-t border-white/30">
+                            {visitServices === null ? (
+                              <div className="flex items-center gap-1.5 py-2">
+                                <div className="w-3 h-3 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
+                                <span className="text-xs text-gray-400">Loading…</span>
+                              </div>
+                            ) : (
+                              <div>
+                                {visitServices.length === 0 && (
+                                  <p className="text-[11px] text-gray-400 pt-2 pb-1">No services yet</p>
+                                )}
+                                {visitServices.map(svc => (
+                                  <div key={svc.id} className="flex items-center gap-2 justify-between py-1.5">
+                                    <div className="w-2 h-2 rounded-full flex-shrink-0 bg-purple-400" />
+                                    <span className="text-[12px] font-semibold text-gray-800 flex-1">{svc.service_name}</span>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      {svc.price != null && (
+                                        <span className="text-[12px] font-bold text-ios-blue tabular-nums">
+                                          {formatKES(svc.price)}
+                                        </span>
+                                      )}
+                                      {canAct && (
+                                        <button
+                                          onClick={e => { e.stopPropagation(); handleDeleteService(visit.id, svc.id) }}
+                                          className="text-ios-gray-1 hover:text-red-500 transition-colors"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                {visitServices.length > 0 && (
+                                  <div className="pt-2 mt-1 border-t border-white/30">
+                                    <div className="flex justify-between items-center pt-1">
+                                      <span className="text-xs font-semibold text-gray-700">Total</span>
+                                      <span className="font-bold text-sm tabular-nums" style={{ color: accentColor }}>
+                                        {formatKES(svcTotal)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </section>
+                      )
+                    })()}
+
+                    {/* ── NOTES sub-card ── */}
+                    {(() => {
+                      const allNotes = Object.prototype.hasOwnProperty.call(allPatientNotes, visit.patient_id)
+                        ? allPatientNotes[visit.patient_id]
+                        : null
+                      const isAddingNote = addingNoteVisitId === visit.id
+                      return (
+                        <section
+                          className="rounded-3xl border border-white/50"
+                          style={{ backgroundColor: accentColor + '20', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+                        >
+                          <div className="p-4">
+                            <p className="text-xs font-bold tracking-wide" style={{ color: accentColor }}>
+                              NOTES — ALL VISITS{allNotes?.length ? ` (${allNotes.length})` : ''}
+                            </p>
+                          </div>
+                          <div className="px-4 pb-4 border-t border-white/30">
+                            {allNotes === null ? (
+                              <div className="flex items-center gap-2 py-2">
+                                <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
+                                <span className="text-xs text-gray-400">Loading…</span>
+                              </div>
+                            ) : (
+                              <div>
+                                {allNotes.map((note, i) => {
+                                  const visitInfo = note.outpatient_visits
+                                  const visitDate = visitInfo?.visit_date
+                                  const visitHospital = visitInfo?.hospitals?.name
+                                  const noteDate = new Date(note.created_at)
+                                  const noteDateStr = noteDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                  const noteTimeStr = noteDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                                  const isLast = i === allNotes.length - 1
+                                  return (
+                                    <div key={note.id} className="flex gap-2.5 pt-2">
+                                      <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                                        <div
+                                          className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white flex-shrink-0"
+                                          style={{ backgroundColor: accentColor }}
+                                        />
+                                        {!isLast && (
+                                          <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '1.5rem' }} />
+                                        )}
+                                      </div>
+                                      <div className={`flex-1 min-w-0 ${!isLast ? 'pb-1' : ''}`}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-xs font-semibold text-gray-800">
+                                            {noteDateStr} · {noteTimeStr}
+                                          </span>
+                                        </div>
+                                        {(visitDate || visitHospital) && (
+                                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                            <span className="text-[10px] text-gray-400">
+                                              Visit: {visitDate ? formatDate(visitDate) : ''}
+                                              {visitHospital ? ` · ${visitHospital}` : ''}
+                                            </span>
+                                          </div>
+                                        )}
+                                        <p className="text-[13px] mt-1 leading-snug text-gray-800">"{note.note_text}"</p>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                                {allNotes.length === 0 && !isAddingNote && (
+                                  <p className="text-xs text-gray-400 pt-2 pb-1">No notes yet</p>
+                                )}
+                              </div>
+                            )}
+                            {isAddingNote && (
+                              <div className="mt-2 space-y-2">
+                                <textarea
+                                  value={noteText}
+                                  onChange={e => setNoteText(e.target.value)}
+                                  rows={2}
+                                  autoFocus
+                                  placeholder="Type a note…"
+                                  className="w-full px-3 py-2 text-sm rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 resize-none"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => { setAddingNoteVisitId(null); setNoteText('') }}
+                                    className="flex-1 py-1.5 text-xs font-semibold rounded-xl bg-black/[0.06] text-gray-600"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleAddNote(visit.id, visit.patient_id)}
+                                    disabled={submittingNote || !noteText.trim()}
+                                    className="flex-1 py-1.5 text-xs font-semibold rounded-xl bg-ios-blue text-white disabled:opacity-50"
+                                  >
+                                    {submittingNote ? 'Saving…' : 'Save'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </section>
+                      )
+                    })()}
+
+                    {/* ── ACTIONS + COLLAPSE row — exactly two children ── */}
+                    <div className="flex items-center pt-1 pb-1 gap-2">
+                      {canAct && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setActionsOpenVisitId(prev => prev === visit.id ? null : visit.id) }}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
+                        >
+                          <span className="tracking-widest text-gray-400">•••</span>
+                          <span>Actions</span>
+                          <span className={`text-[9px] transition-transform duration-300 inline-block ${actionsOpenVisitId === visit.id ? 'rotate-180' : ''}`}>▾</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleExpandVisit(visit)}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                          <polyline points="18 15 12 9 6 15"/>
+                        </svg>
+                        Collapse
+                      </button>
+                    </div>
+
+                    {/* Staggered action buttons */}
+                    {canAct && (
+                      <div className={`overflow-hidden transition-all duration-300 ease-out ${actionsOpenVisitId === visit.id ? 'max-h-24 opacity-100 mt-0 pointer-events-auto' : 'max-h-0 opacity-0 mt-0 pointer-events-none'}`}>
+                        <div className="overflow-visible pb-2">
+                          <div className="flex items-center gap-2 flex-nowrap overflow-x-auto scrollbar-none pb-1">
+                            {[
+                              {
+                                onClick: () => { navigate(`/patients?highlight=${visit.patient_id}`); setActionsOpenVisitId(null) },
+                                title: 'Patient Record',
+                                colorClass: 'bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-100',
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+                              },
+                              {
+                                onClick: () => { setAddingNoteVisitId(visit.id); setNoteText(''); setActionsOpenVisitId(null) },
+                                title: 'Add note',
+                                colorClass: 'bg-gray-100 hover:bg-gray-200 text-gray-600 border-gray-200',
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
+                              },
+                              {
+                                onClick: () => { setAddServiceModal({ visitId: visit.id, hospitalId: visit.hospital_id }); setSelectedServices([]); setActionsOpenVisitId(null) },
+                                title: 'Add service',
+                                colorClass: 'bg-gray-100 hover:bg-gray-200 text-gray-600 border-gray-200',
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>,
+                              },
+                              ...(visit.hospital_id ? [{
+                                onClick: () => { setBookingVisit(visit); setActionsOpenVisitId(null) },
+                                title: 'Book appointment',
+                                colorClass: 'bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-100',
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+                              }] : []),
+                              {
+                                onClick: () => {
+                                  if (!Object.prototype.hasOwnProperty.call(servicesCache, visit.id)) {
+                                    setServicesCache(prev => ({ ...prev, [visit.id]: visit.visit_services || [] }))
+                                  }
+                                  setCloseVisitModal(visit)
+                                  setActionsOpenVisitId(null)
+                                },
+                                title: 'Close visit',
+                                colorClass: 'bg-red-50 hover:bg-red-100 text-red-500 border-red-100',
+                                icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>,
+                              },
+                            ].map((btn, i) => (
+                              <button
+                                key={i}
+                                onClick={btn.onClick}
+                                title={btn.title}
+                                style={{ transitionDelay: actionsOpenVisitId === visit.id ? `${i * 35}ms` : '0ms' }}
+                                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex-shrink-0 flex items-center justify-center border transition-all duration-[250ms] ease-out hover:scale-110 active:scale-95
+                                  ${actionsOpenVisitId === visit.id ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-3 scale-75 opacity-0'}
+                                  ${btn.colorClass}`}
+                              >
+                                {btn.icon}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        })()}
       </div>
 
-      {showModal && (
-        <NewVisitModal
+      {/* Booking modal */}
+      {bookingVisit && (
+        <BookingModal
+          visit={bookingVisit}
           teamId={user.team_id}
+          userId={user.id}
           hospitals={hospitals}
-          onClose={() => setShowModal(false)}
-          onCreated={handleVisitCreated}
+          onClose={() => setBookingVisit(null)}
+          onBooked={handleBooked}
         />
+      )}
+
+      {/* New Visit modal */}
+      <NewVisitModal
+        open={showNewVisitModal}
+        onClose={() => setShowNewVisitModal(false)}
+        hospitals={hospitals}
+        onVisitCreated={handleVisitCreated}
+      />
+
+      {/* Close Visit modal — billing guard: review the bill (and add services if needed) before closing.
+          Rendered BEFORE the Add Service modal below so that, when "+ Add Service" is used from
+          inside this modal, the Add Service modal mounts later in the DOM and paints on top (both
+          share ModalShell's fixed z-index, so stacking order = mount order). */}
+      {closeVisitModal && (() => {
+        const visit = closeVisitModal
+        const visitServices = servicesCache[visit.id] ?? (visit.visit_services || [])
+        const total = visitServices.reduce((sum, sv) => sum + Number(sv.price || 0), 0)
+        const isClosing = closingVisitId === visit.id
+        const patientName = visit.patients ? `${visit.patients.first_name} ${visit.patients.last_name}` : 'Patient'
+        return (
+          <ModalShell onClose={() => setCloseVisitModal(null)}>
+            <div className="glass-rim rounded-3xl p-2.5 w-full max-w-sm mx-4">
+              <div className="surface-shell p-6">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-base font-bold text-gray-900">Close Visit</h3>
+                  <button
+                    onClick={() => setCloseVisitModal(null)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">{patientName} · review the bill before closing</p>
+
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/60 max-h-56 overflow-y-auto">
+                  {visitServices.length === 0 ? (
+                    <p className="text-sm text-ios-gray-1 text-center py-6">No services added</p>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {visitServices.map(svc => (
+                        <div key={svc.id} className="flex items-center gap-2 justify-between px-3 py-2.5">
+                          <span className="text-sm font-medium text-gray-800 flex-1">{svc.service_name}</span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {svc.price != null && (
+                              <span className="text-sm font-semibold text-ios-blue tabular-nums">
+                                {formatKES(svc.price)}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleDeleteService(visit.id, svc.id)}
+                              className="text-ios-gray-1 hover:text-red-500 transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between px-1 mt-3">
+                  <span className="text-xs font-semibold text-gray-500">Total</span>
+                  <span className="text-base font-bold text-gray-900 tabular-nums">{formatKES(total)}</span>
+                </div>
+
+                <button
+                  onClick={() => { setAddServiceModal({ visitId: visit.id, hospitalId: visit.hospital_id }); setSelectedServices([]) }}
+                  className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-ios-blue bg-ios-blue/10 hover:bg-ios-blue/15 transition-colors"
+                >
+                  + Add Service
+                </button>
+
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setCloseVisitModal(null)}
+                    className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleCloseVisit(visit.id)}
+                    disabled={isClosing}
+                    className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-gray-800 text-white hover:bg-gray-900 transition-colors disabled:opacity-50"
+                  >
+                    {isClosing ? 'Closing…' : 'Confirm & Close'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </ModalShell>
+        )
+      })()}
+
+      {/* Add Service modal — mounted after Close Visit above so it stacks on top when opened from within it */}
+      {addServiceModal && (
+        <ModalShell onClose={() => { setAddServiceModal(null); setServiceSearch(''); setSelectedServices([]) }}>
+          <div className="glass-rim rounded-3xl p-2.5 w-full max-w-sm mx-4">
+            <div className="surface-shell p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-900">Add Service</h3>
+              <button
+                onClick={() => { setAddServiceModal(null); setServiceSearch(''); setSelectedServices([]) }}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <input
+              autoFocus
+              value={serviceSearch}
+              onChange={e => setServiceSearch(e.target.value)}
+              placeholder="Search services…"
+              className="w-full px-3 py-2 text-sm rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 mb-3"
+            />
+            <div className="space-y-1 max-h-56 overflow-y-auto">
+              {(() => {
+                const filtered = teamServices.filter(s =>
+                  !serviceSearch || s.service_name.toLowerCase().includes(serviceSearch.toLowerCase())
+                )
+                if (teamServices.length === 0) {
+                  return <p className="text-sm text-ios-gray-1 text-center py-4">No services configured</p>
+                }
+                if (filtered.length === 0) {
+                  return <p className="text-sm text-ios-gray-1 text-center py-4">No matches</p>
+                }
+                return filtered.map(svc => {
+                  const isChecked = !!selectedServices.find(s => s.id === svc.id)
+                  return (
+                    <button
+                      key={svc.id}
+                      onClick={() => {
+                        setSelectedServices(prev =>
+                          prev.find(s => s.id === svc.id)
+                            ? prev.filter(s => s.id !== svc.id)
+                            : [...prev, svc]
+                        )
+                      }}
+                      disabled={!!addingServiceId}
+                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors disabled:opacity-50 ${
+                        isChecked ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
+                        isChecked ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
+                      }`}>
+                        {isChecked && (
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="flex-1 text-sm font-medium text-gray-800">{svc.service_name}</span>
+                      {svc.price != null && (
+                        <span className="text-sm font-semibold text-blue-600 tabular-nums">
+                          {formatKES(svc.price)}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })
+              })()}
+            </div>
+            {selectedServices.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500">
+                    {selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} selected
+                  </span>
+                  <span className="text-sm font-bold text-blue-600 tabular-nums">
+                    {formatKES(selectedServices.reduce((sum, s) => sum + Number(s.price || 0), 0))}
+                  </span>
+                </div>
+                <button
+                  onClick={handleAddSelectedServices}
+                  disabled={!!addingServiceId}
+                  className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+                >
+                  {addingServiceId ? 'Adding…' : `Add ${selectedServices.length} Service${selectedServices.length > 1 ? 's' : ''}`}
+                </button>
+              </div>
+            )}
+            </div>
+          </div>
+        </ModalShell>
       )}
     </div>
   )
