@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { MotionConfig } from 'framer-motion'
 import Lenis from 'lenis'
 import LandingNav from './LandingNav'
 import Hero from './Hero'
@@ -23,6 +24,11 @@ export default function Landing() {
   const [authMode, setAuthMode] = useState('signin')
   const [authOpen, setAuthOpen] = useState(false)
   const lenisRef = useRef(null)
+  // Touch / coarse-pointer devices (phones, tablets) get reduced motion: every
+  // framer-motion animation below renders its static final state, the looping
+  // showcases stop, and Testimonials swaps its 3D carousel for the static grid —
+  // all from this one flag. Desktop keeps 'user' (honours the OS setting only).
+  const [isMobile] = useState(() => window.matchMedia('(hover: none), (pointer: coarse)').matches)
 
   function openAuth(mode) {
     setAuthMode(mode)
@@ -86,6 +92,7 @@ export default function Landing() {
   }, [authOpen])
 
   return (
+    <MotionConfig reducedMotion={isMobile ? 'always' : 'user'}>
     <div className="min-h-screen bg-slate-950">
       {/* Nav + Hero mount immediately (above the fold). Everything below mounts only
           as it nears the viewport, so the page is interactive during load instead of
@@ -103,5 +110,6 @@ export default function Landing() {
       <LazyMount minHeight={240}><Suspense fallback={null}><Footer openAuth={openAuth} lenisRef={lenisRef} /></Suspense></LazyMount>
       <AuthModal open={authOpen} mode={authMode} onModeChange={setAuthMode} onClose={() => setAuthOpen(false)} />
     </div>
+    </MotionConfig>
   )
 }
