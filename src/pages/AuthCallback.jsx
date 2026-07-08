@@ -43,7 +43,7 @@ export default function AuthCallback() {
         const teamId = crypto.randomUUID()
         const { error: teamError } = await supabase
           .from('teams')
-          .insert({ id: teamId, name: practiceName })
+          .insert({ id: teamId, name: practiceName, admin_id: userId })
         if (teamError) throw new Error('Error creating practice: ' + teamError.message)
 
         setStatus('Setting up your account...')
