@@ -219,6 +219,53 @@ function lastWardEvent(events) {
     .reduce((max, ev) => (!max || parseEventTimestamp(ev.timestamp) > parseEventTimestamp(max.timestamp)) ? ev : max, null)
 }
 
+// Adds a new ward segment (a 'transferred' event) to an admission. Used by the
+// timeline editor to build up a retrospective multi-ward stay. Inserts without a
+// select-back (the RLS SELECT policy can hide a just-inserted row), then reconciles
+// Invariant A — admissions.ward always tracks the chronologically-last ward.
+export async function createTimelineEvent(admissionId, ward, timestamp, ctx = {}) {
+  if (!ward) throw new Error('A ward is required')
+  if (!timestamp) throw new Error('A date is required')
+
+  const { error: insertError } = await supabase
+    .from('timeline_events')
+    .insert({
+      admission_id: admissionId,
+      event_type: 'transferred',
+      ward,
+      timestamp,
+      notes: `Transferred to ${ward}`,
+    })
+  if (insertError) throw insertError
+
+  const { data: events, error: fetchError } = await supabase
+    .from('timeline_events')
+    .select('id, event_type, ward, timestamp')
+    .eq('admission_id', admissionId)
+    .in('event_type', ['admitted', 'transferred'])
+  if (fetchError) throw fetchError
+  const last = lastWardEvent(events)
+  if (last) {
+    const { error: admError } = await supabase
+      .from('admissions')
+      .update({ ward: last.ward })
+      .eq('id', admissionId)
+    if (admError) throw admError
+  }
+
+  await logActivity({
+    user: ctx.user,
+    action: 'add_timeline_event',
+    entityType: 'timeline_event',
+    entityId: null,
+    patientId: ctx.patientId,
+    patientName: ctx.patientName,
+    details: { event_type: 'transferred', ward, timestamp },
+  })
+
+  return { success: true }
+}
+
 export async function updateTimelineEvent(admissionId, eventId, updates, ctx = {}) {
   const { data: events, error: fetchError } = await supabase
     .from('timeline_events')

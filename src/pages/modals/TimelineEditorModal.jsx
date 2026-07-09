@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, AlertTriangle } from 'lucide-react'
-import { fetchHospitalWards, updateTimelineEvent, deleteTimelineEvent, correctWrongfulWard, parseEventTimestamp } from '../../lib/api'
+import { fetchHospitalWards, createTimelineEvent, updateTimelineEvent, deleteTimelineEvent, correctWrongfulWard, parseEventTimestamp } from '../../lib/api'
 import { formatKES } from '../../lib/utils'
 import { useAuth } from '../../context/AuthContext'
 import ModalShell from '../../components/ModalShell'
@@ -75,6 +75,24 @@ export default function TimelineEditorModal({ admission, onClose, onSaved }) {
     setRows(prev => prev.filter(r => r.id !== id))
   }
 
+  function addWardRow() {
+    setError(null)
+    setRows(prev => [...prev, {
+      id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      event_type: 'transferred',
+      ward: '',
+      dateStr: '',
+    }])
+  }
+
+  // Admission event first, then chronological by date — so the "until" labels and the
+  // ordering validation stay correct even when new wards are added out of sequence.
+  const displayRows = [...rows].sort((a, b) => {
+    if (a.event_type === 'admitted' && b.event_type !== 'admitted') return -1
+    if (b.event_type === 'admitted' && a.event_type !== 'admitted') return 1
+    return (a.dateStr || '').localeCompare(b.dateStr || '')
+  })
+
   const original = originalRef.current
   const hasDiffs = rows.length !== original.length || rows.some(row => {
     const orig = original.find(o => o.id === row.id)
@@ -88,12 +106,13 @@ export default function TimelineEditorModal({ admission, onClose, onSaved }) {
   async function handleSave() {
     setError(null)
 
-    for (const row of rows) {
-      if (!row.ward) { setError('Every row must have a ward selected.'); return }
+    for (const row of displayRows) {
+      if (!row.ward) { setError('Every ward row needs a ward selected.'); return }
+      if (!row.dateStr) { setError('Every ward row needs a date.'); return }
     }
-    for (let i = 1; i < rows.length; i++) {
-      if (rows[i].dateStr <= rows[i - 1].dateStr) {
-        setError('Each transfer must be dated after the previous ward change.')
+    for (let i = 1; i < displayRows.length; i++) {
+      if (displayRows[i].dateStr <= displayRows[i - 1].dateStr) {
+        setError('Each ward must start after the previous ward’s date.')
         return
       }
     }
@@ -110,7 +129,7 @@ export default function TimelineEditorModal({ admission, onClose, onSaved }) {
         }
       }
 
-      for (const row of rows) {
+      for (const row of displayRows) {
         const orig = original.find(o => o.id === row.id)
         if (!orig) continue
         const updates = {}
@@ -119,6 +138,13 @@ export default function TimelineEditorModal({ admission, onClose, onSaved }) {
         if (Object.keys(updates).length > 0) {
           await updateTimelineEvent(admission.id, row.id, updates, ctx)
         }
+      }
+
+      // New ward segments, created in chronological order so admissions.ward settles
+      // on the last one.
+      for (const row of displayRows) {
+        if (original.find(o => o.id === row.id)) continue
+        await createTimelineEvent(admission.id, row.ward, new Date(row.dateStr + 'T00:00:00Z').toISOString(), ctx)
       }
 
       onSaved?.()
@@ -167,9 +193,9 @@ export default function TimelineEditorModal({ admission, onClose, onSaved }) {
               <p className="text-sm text-ios-gray-1 py-6 text-center">Loading…</p>
             ) : (
               <>
-                {rows.map((row, i) => {
+                {displayRows.map((row, i) => {
                   const isFirst = i === 0
-                  const nextRow = rows[i + 1]
+                  const nextRow = displayRows[i + 1]
                   const untilLabel = nextRow
                     ? fmtDate(nextRow.dateStr)
                     : isActive
@@ -218,6 +244,13 @@ export default function TimelineEditorModal({ admission, onClose, onSaved }) {
                     </div>
                   )
                 })}
+
+                <button
+                  onClick={addWardRow}
+                  className="w-full py-2.5 rounded-2xl border border-dashed border-ios-blue/40 text-ios-blue text-sm font-semibold hover:bg-ios-blue/5 transition-colors"
+                >
+                  + Add ward
+                </button>
 
                 {error && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
