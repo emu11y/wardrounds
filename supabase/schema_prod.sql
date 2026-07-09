@@ -383,12 +383,12 @@ CREATE OR REPLACE FUNCTION public.seed_default_positions()
  SET search_path TO 'public'
 AS $function$
 BEGIN
-  INSERT INTO public.team_positions (team_id, name, sort_order) VALUES
-    (NEW.id, 'Primary Doctor', 1),
-    (NEW.id, 'Associate Doctor', 2),
-    (NEW.id, 'Intern Doctor', 3),
-    (NEW.id, 'Accountant', 4),
-    (NEW.id, 'Accounts Team', 5);
+  INSERT INTO public.team_positions (team_id, name, sort_order, is_clinical) VALUES
+    (NEW.id, 'Primary Doctor',   1, true),
+    (NEW.id, 'Associate Doctor', 2, true),
+    (NEW.id, 'Intern Doctor',    3, true),
+    (NEW.id, 'Accountant',       4, false),
+    (NEW.id, 'Accounts Team',    5, false);
   RETURN NEW;
 END;
 $function$;
