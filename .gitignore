@@ -19,6 +19,9 @@ dist-ssr
 # Supabase CLI local link cache
 supabase/.temp
 
+# Claude local settings (machine-specific; do not version)
+.claude/settings.local.json
+
 # Session handoff notes (kept in Downloads, not versioned)
 WARDROUNDS_SESSION_HANDOFF*.md
 
