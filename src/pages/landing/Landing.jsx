@@ -49,8 +49,14 @@ export default function Landing() {
     }
     html.style.background = '#020617'
     body.style.background = '#020617'
-    html.style.overflowX = 'hidden'
-    body.style.overflowX = 'hidden'
+    // Use `clip`, NOT `hidden`, to trim the Testimonials carousel's horizontal
+    // overflow. `overflow-x: hidden` silently promotes overflow-y to `auto`, which
+    // turns <body> into the scroll container — but Lenis drives the document
+    // element, so the wheel gets hijacked and the page can't scroll past the hero.
+    // `overflow-x: clip` clips horizontally without creating a scroll container, so
+    // the document stays the scroller and Lenis works. (Restored on unmount below.)
+    html.style.overflowX = 'clip'
+    body.style.overflowX = 'clip'
     return () => {
       html.style.background = prev.htmlBg
       body.style.background = prev.bodyBg
