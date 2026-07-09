@@ -24,6 +24,7 @@ export default function Landing() {
   const [authMode, setAuthMode] = useState('signin')
   const [authOpen, setAuthOpen] = useState(false)
   const lenisRef = useRef(null)
+  const contentRef = useRef(null)
   // Touch / coarse-pointer devices (phones, tablets) get reduced motion: every
   // framer-motion animation below renders its static final state, the looping
   // showcases stop, and Testimonials swaps its 3D carousel for the static grid —
@@ -83,7 +84,19 @@ export default function Landing() {
     }
     let rafId = requestAnimationFrame(raf)
 
+    // Below-the-fold sections mount lazily (LazyMount), so the page keeps growing
+    // taller after Lenis initialises. Lenis's own ResizeObserver watches the
+    // document element's box, which stays viewport-height, so it never learns the
+    // page got taller and clamps wheel/trackpad scrolling at the hero. Watch the
+    // content wrapper (which actually grows) and tell Lenis to recompute its limit.
+    let ro
+    if (contentRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => lenis.resize())
+      ro.observe(contentRef.current)
+    }
+
     return () => {
+      ro?.disconnect()
       cancelAnimationFrame(rafId)
       lenis.destroy()
       lenisRef.current = null
@@ -99,7 +112,7 @@ export default function Landing() {
 
   return (
     <MotionConfig reducedMotion={isMobile ? 'always' : 'user'}>
-    <div className="min-h-screen bg-slate-950">
+    <div ref={contentRef} className="min-h-screen bg-slate-950">
       {/* Nav + Hero mount immediately (above the fold). Everything below mounts only
           as it nears the viewport, so the page is interactive during load instead of
           blocking on a synchronous mount of every framer-motion section at once. */}
