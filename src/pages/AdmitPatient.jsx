@@ -6,7 +6,7 @@ import TopHeader from '../components/TopHeader'
 import ModalShell from '../components/ModalShell'
 import TagScanDropzone from '../components/TagScanDropzone'
 import Toast from '../components/Toast'
-import { extractPatientDataFromTag, matchHospitalFromScan } from '../lib/hospitalTagReader'
+import { extractPatientDataFromTag, matchHospitalFromScan, fileToScaledBase64 } from '../lib/hospitalTagReader'
 import { supabase } from '../lib/supabaseClient'
 import {
   fetchHospitals,
@@ -170,27 +170,6 @@ export default function AdmitPatient() {
     setActiveAdmissionWarning(null)
   }
 
-  function fileToBase64PNG(file) {
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      const objectUrl = URL.createObjectURL(file)
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = img.naturalWidth
-        canvas.height = img.naturalHeight
-        canvas.getContext('2d').drawImage(img, 0, 0)
-        const base64 = canvas.toDataURL('image/png').split(',')[1]
-        URL.revokeObjectURL(objectUrl)
-        resolve(base64)
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl)
-        reject(new Error('Could not load image'))
-      }
-      img.src = objectUrl
-    })
-  }
-
   async function handleScanFile(file) {
     if (!file) return
 
@@ -199,8 +178,8 @@ export default function AdmitPatient() {
     setIsScanning(true)
 
     try {
-      const base64 = await fileToBase64PNG(file)
-      const extracted = await extractPatientDataFromTag(base64, hospitals, 'image/png')
+      const { base64, mediaType } = await fileToScaledBase64(file)
+      const extracted = await extractPatientDataFromTag(base64, hospitals, mediaType)
 
       if (extracted.firstName) setFirstName(extracted.firstName)
       if (extracted.lastName) setLastName(extracted.lastName)

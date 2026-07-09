@@ -1,5 +1,31 @@
 import { supabase } from './supabaseClient'
 
+// Downscale + JPEG-encode a photo so the base64 payload stays well under the
+// Claude API's 10 MB image limit. Phone photos are already several MB, and the
+// old approach re-encoded them as lossless PNG, which *inflated* them to 15–30 MB
+// and made every scan fail. A hospital tag is just text, so 2000px on the long
+// edge is ample for the vision model to read while keeping the JPEG tiny.
+// Returns { base64, mediaType } ready for extractPatientDataFromTag.
+export function fileToScaledBase64(file, { maxDim = 2000, quality = 0.85 } = {}) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const w = img.naturalWidth, h = img.naturalHeight
+      const scale = Math.min(1, maxDim / Math.max(w, h))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(w * scale))
+      canvas.height = Math.max(1, Math.round(h * scale))
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1]
+      resolve({ base64, mediaType: 'image/jpeg' })
+    }
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Could not load image')) }
+    img.src = objectUrl
+  })
+}
+
 // Calls the `scan-tag` Supabase Edge Function, which proxies the Claude API
 // server-side. The Claude key is a project secret (CLAUDE_API_KEY) and is never
 // shipped to the browser; only authenticated users can trigger a scan.

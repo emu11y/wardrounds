@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, Search, UserPlus, ScanLine, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PatientSearch from './PatientSearch'
-import { extractPatientDataFromTag, matchHospitalFromScan } from '../lib/hospitalTagReader'
+import { extractPatientDataFromTag, matchHospitalFromScan, fileToScaledBase64 } from '../lib/hospitalTagReader'
 import { createOutpatientVisit, createPatient, findPatientByHospitalId, fetchScheduleForDate, ALL_TIME_SLOTS, updatePatientContact, fmtSlot, slotKeyFromVisit } from '../lib/api'
 import { logActivity } from '../lib/activityLog'
 import { todayStr } from '../lib/utils'
@@ -16,23 +16,6 @@ const TABS = [
   { key: 'new',    Icon: UserPlus, label: 'New Patient' },
 ]
 
-function fileToBase64PNG(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const objectUrl = URL.createObjectURL(file)
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      canvas.getContext('2d').drawImage(img, 0, 0)
-      const base64 = canvas.toDataURL('image/png').split(',')[1]
-      URL.revokeObjectURL(objectUrl)
-      resolve(base64)
-    }
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Could not load image')) }
-    img.src = objectUrl
-  })
-}
 
 export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated, slotDate, slotTime, slotStatus, prefillPatient, visitType, lockedDoctorId = null }) {
   const { user } = useAuth()
@@ -149,8 +132,8 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
     setScanPreview(URL.createObjectURL(file))
     setIsScanning(true)
     try {
-      const base64 = await fileToBase64PNG(file)
-      const extracted = await extractPatientDataFromTag(base64, hospitals, 'image/png')
+      const { base64, mediaType } = await fileToScaledBase64(file)
+      const extracted = await extractPatientDataFromTag(base64, hospitals, mediaType)
       handleScanExtract(extracted)
       setScanPreview(null)
     } catch (err) {

@@ -8,7 +8,7 @@ import {
   fetchAdhocBookings, createAdhocBooking, deleteAdhocBooking, ALL_TIME_SLOTS,
   updatePatientContact, fetchMembersWithPositions, fmtSlot, slotKeyFromVisit,
 } from '../lib/api'
-import { extractPatientDataFromTag, matchHospitalFromScan } from '../lib/hospitalTagReader'
+import { extractPatientDataFromTag, matchHospitalFromScan, fileToScaledBase64 } from '../lib/hospitalTagReader'
 import { GLASS_CARD } from '../lib/theme'
 import { todayStr } from '../lib/utils'
 import TopHeader from '../components/TopHeader'
@@ -21,23 +21,6 @@ import Toast from '../components/Toast'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function fileToBase64PNG(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const objectUrl = URL.createObjectURL(file)
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      canvas.getContext('2d').drawImage(img, 0, 0)
-      const base64 = canvas.toDataURL('image/png').split(',')[1]
-      URL.revokeObjectURL(objectUrl)
-      resolve(base64)
-    }
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Could not load image')) }
-    img.src = objectUrl
-  })
-}
 
 // ─── Block Range Modal (single-day OR multi-day) ────────────────────────────
 
@@ -461,8 +444,8 @@ export default function MyAppointments() {
     setAdhocScanPreview(URL.createObjectURL(file))
     setAdhocIsScanning(true)
     try {
-      const base64 = await fileToBase64PNG(file)
-      const extracted = await extractPatientDataFromTag(base64, hospitals, 'image/png')
+      const { base64, mediaType } = await fileToScaledBase64(file)
+      const extracted = await extractPatientDataFromTag(base64, hospitals, mediaType)
       const { hospital: matchedHospital } = matchHospitalFromScan(extracted, hospitals)
       if (matchedHospital) setAdhocFormHospital(matchedHospital)
       setShowAdhocScan(false)
