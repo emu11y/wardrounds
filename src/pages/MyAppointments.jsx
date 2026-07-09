@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Lock, X, Plus, Camera } from 'lucide-react'
+import { Lock, X, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchScheduleForDate, blockSlot, blockSlotRange, unblockSlot,
@@ -14,6 +14,7 @@ import { todayStr } from '../lib/utils'
 import TopHeader from '../components/TopHeader'
 import NewVisitModal from '../components/NewVisitModal'
 import ModalShell from '../components/ModalShell'
+import TagScanDropzone from '../components/TagScanDropzone'
 import DoctorPicker from '../components/DoctorPicker'
 import PatientSearch from '../components/PatientSearch'
 import Toast from '../components/Toast'
@@ -273,7 +274,13 @@ export default function MyAppointments() {
     if (!user?.team_id) return
     fetchMembersWithPositions(user.team_id)
       .then(members => {
-        const docs = (members || []).filter(m => m.is_clinical === true)
+        const clinical = (members || []).filter(m => m.is_clinical === true)
+        // Fallback for a practice with nobody marked clinical (e.g. a fresh solo
+        // admin whose position isn't set yet): let the current user act as the
+        // doctor so the schedule is usable instead of hanging with no selection.
+        const docs = clinical.length > 0
+          ? clinical
+          : (members || []).filter(m => m.id === user.id)
         setDoctors(docs)
         setSelectedDoctorId(prev => prev || (docs.some(d => d.id === user.id) ? user.id : (docs[0]?.id ?? null)))
       })
@@ -323,7 +330,10 @@ export default function MyAppointments() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSchedule = useCallback(async () => {
-    if (!user?.team_id || !selectedDoctorId) return
+    if (!user?.team_id) return
+    // No doctor selected yet (e.g. a practice with nobody marked clinical): don't
+    // leave the spinner running forever — clear it and show the empty schedule.
+    if (!selectedDoctorId) { setSchedule([]); setLoading(false); return }
     setLoading(true)
     try {
       const data = await fetchScheduleForDate(user.team_id, selectedDoctorId, date)
@@ -445,8 +455,7 @@ export default function MyAppointments() {
     }
   }
 
-  async function handleAdhocScanFile(e) {
-    const file = e.target.files?.[0]
+  async function handleAdhocScanFile(file) {
     if (!file) return
     setAdhocScanError(null)
     setAdhocScanPreview(URL.createObjectURL(file))
@@ -464,7 +473,6 @@ export default function MyAppointments() {
     } finally {
       setAdhocIsScanning(false)
     }
-    e.target.value = ''
   }
 
   return (
@@ -849,50 +857,13 @@ export default function MyAppointments() {
               </button>
             </div>
             <div className="px-4 pb-4 space-y-3">
-              <label className="block cursor-pointer">
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only"
-                  disabled={adhocIsScanning}
-                  onChange={handleAdhocScanFile}
-                />
-                <div className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed overflow-hidden min-h-44 transition-all ${
-                  adhocIsScanning ? 'border-ios-blue/40 bg-ios-blue/5' : 'border-ios-gray-4 bg-ios-gray-6 hover:border-ios-blue/50 hover:bg-ios-blue/5'
-                }`}>
-                  {adhocScanPreview ? (
-                    <img src={adhocScanPreview} alt="Tag preview" className="w-full max-h-52 object-contain" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 py-6 text-ios-gray-1">
-                      <Camera size={36} strokeWidth={1.2} className="opacity-30" />
-                      <p className="text-sm font-medium">Tap to photograph tag</p>
-                      <p className="text-xs opacity-50">Aga Khan · M.P Shah · Avenue Healthcare</p>
-                    </div>
-                  )}
-                  {adhocIsScanning && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 gap-2">
-                      <div className="w-7 h-7 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
-                      <p className="text-sm font-semibold text-ios-blue">Reading tag…</p>
-                    </div>
-                  )}
-                </div>
-              </label>
-              {adhocScanError && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 rounded-2xl text-sm text-red-600">
-                  <X size={14} className="mt-0.5 flex-shrink-0" />
-                  <span>{adhocScanError}</span>
-                </div>
-              )}
-              {(adhocScanPreview || adhocScanError) && !adhocIsScanning && (
-                <button
-                  type="button"
-                  onClick={() => { setAdhocScanPreview(null); setAdhocScanError(null) }}
-                  className="w-full py-2.5 rounded-2xl text-sm font-medium text-ios-gray-1 bg-ios-gray-6 hover:bg-ios-gray-5 transition-all"
-                >
-                  Clear &amp; try again
-                </button>
-              )}
+              <TagScanDropzone
+                onFile={handleAdhocScanFile}
+                isScanning={adhocIsScanning}
+                preview={adhocScanPreview}
+                error={adhocScanError}
+                onClear={() => { setAdhocScanPreview(null); setAdhocScanError(null) }}
+              />
             </div>
             </div>
           </div>

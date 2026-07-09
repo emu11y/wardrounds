@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Search, UserPlus, ScanLine, Camera, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Search, UserPlus, ScanLine, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PatientSearch from './PatientSearch'
 import { extractPatientDataFromTag, matchHospitalFromScan } from '../lib/hospitalTagReader'
@@ -7,6 +7,7 @@ import { createOutpatientVisit, createPatient, findPatientByHospitalId, fetchSch
 import { logActivity } from '../lib/activityLog'
 import { todayStr } from '../lib/utils'
 import ModalShell from './ModalShell'
+import TagScanDropzone from './TagScanDropzone'
 import DoctorPicker from './DoctorPicker'
 
 const TABS = [
@@ -142,8 +143,7 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
     if (hospital) setHospitalId(hospital.id)
   }
 
-  async function handleScanFile(e) {
-    const file = e.target.files?.[0]
+  async function handleScanFile(file) {
     if (!file) return
     setScanError(null)
     setScanPreview(URL.createObjectURL(file))
@@ -158,7 +158,6 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
     } finally {
       setIsScanning(false)
     }
-    e.target.value = ''
   }
 
   // Validate and build a draft — no DB write until Log Visit
@@ -292,52 +291,13 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
 
               {/* Scan tab */}
               {tab === 'scan' && (
-                <div className="space-y-3">
-                  <label className="block cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="sr-only"
-                      disabled={isScanning}
-                      onChange={handleScanFile}
-                    />
-                    <div className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed overflow-hidden min-h-44 transition-all ${
-                      isScanning ? 'border-ios-blue/40 bg-ios-blue/5' : 'border-ios-gray-4 bg-ios-gray-6 hover:border-ios-blue/50 hover:bg-ios-blue/5'
-                    }`}>
-                      {scanPreview ? (
-                        <img src={scanPreview} alt="Tag preview" className="w-full max-h-52 object-contain" />
-                      ) : (
-                        <div className="flex flex-col items-center gap-2 py-6 text-ios-gray-1">
-                          <Camera size={36} strokeWidth={1.2} className="opacity-30" />
-                          <p className="text-sm font-medium">Tap to photograph tag</p>
-                          <p className="text-xs opacity-50">Aga Khan · M.P Shah · Avenue Healthcare</p>
-                        </div>
-                      )}
-                      {isScanning && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 gap-2">
-                          <div className="w-7 h-7 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
-                          <p className="text-sm font-semibold text-ios-blue">Reading tag…</p>
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                  {scanError && (
-                    <div className="flex items-start gap-2 p-3 bg-red-50 rounded-2xl text-sm text-red-600">
-                      <X size={14} className="mt-0.5 flex-shrink-0" />
-                      <span>{scanError}</span>
-                    </div>
-                  )}
-                  {(scanPreview || scanError) && !isScanning && (
-                    <button
-                      type="button"
-                      onClick={() => { setScanPreview(null); setScanError(null) }}
-                      className="w-full py-2.5 rounded-2xl text-sm font-medium text-ios-gray-1 bg-ios-gray-6 hover:bg-ios-gray-5 transition-all"
-                    >
-                      Clear &amp; try again
-                    </button>
-                  )}
-                </div>
+                <TagScanDropzone
+                  onFile={handleScanFile}
+                  isScanning={isScanning}
+                  preview={scanPreview}
+                  error={scanError}
+                  onClear={() => { setScanPreview(null); setScanError(null) }}
+                />
               )}
               {tab === 'scan' && error && (
                 <p className="text-xs text-red-500">{error}</p>
