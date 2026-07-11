@@ -65,7 +65,7 @@ function ProtectedLayout({ children }) {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen overflow-hidden bg-ios-gray-6 dark:bg-gray-900 p-3 gap-3">
+      <div className="flex h-dvh overflow-hidden bg-ios-gray-6 dark:bg-gray-900 p-3 gap-3">
         <Sidebar />
         <main className="relative flex-1 flex flex-col overflow-hidden rounded-3xl bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm">
           <div id="main-scroll" className="flex-1 overflow-y-auto scrollbar-none pb-24 sm:pb-0">

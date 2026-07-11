@@ -48,6 +48,13 @@
   #root {
     height: 100%;
   }
+
+  /* The authenticated app shell scrolls internally here. Contain overscroll so a
+     scroll that hits the top/bottom doesn't chain to the document and trigger
+     iOS rubber-banding or Android pull-to-refresh (layout-shift jank). */
+  #main-scroll {
+    overscroll-behavior: none;
+  }
 }
 
 @layer components {
