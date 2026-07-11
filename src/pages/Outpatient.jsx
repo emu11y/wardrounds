@@ -9,7 +9,7 @@ import {
   addVisitNote, fetchAllPatientVisitNotes, fetchTeamServices,
   addVisitService, deleteVisitService, ALL_TIME_SLOTS, fmtSlot,
 } from '../lib/api'
-import NewVisitModal from '../components/NewVisitModal'
+import LogVisitModal from '../components/LogVisitModal'
 import TopHeader from '../components/TopHeader'
 import ModalShell from '../components/ModalShell'
 import Toast from '../components/Toast'
@@ -1074,11 +1074,13 @@ export default function Outpatient() {
         />
       )}
 
-      {/* New Visit modal */}
-      <NewVisitModal
+      {/* Log Outpatient Visit modal — scan-first, stamped "now", no date/slot picker.
+          (The appointment-booking NewVisitModal lives on the Appointments page.) */}
+      <LogVisitModal
         open={showNewVisitModal}
         onClose={() => setShowNewVisitModal(false)}
         hospitals={hospitals}
+        teamMembers={teamMembers}
         onVisitCreated={handleVisitCreated}
       />
 
