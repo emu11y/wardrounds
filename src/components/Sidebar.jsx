@@ -3,10 +3,11 @@ import Backdrop from './Backdrop'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, UserPlus, Stethoscope, BedDouble, CalendarClock,
-  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Lock,
+  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Lock, Download,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSidebar } from '../context/SidebarContext'
+import { usePwaInstall } from '../context/PwaInstallContext'
 import { signOut } from '../lib/auth'
 
 // Grouped nav: parent groups expand to reveal children; Patients is standalone.
@@ -42,6 +43,7 @@ export default function Sidebar() {
   const { mobileOpen, setMobileOpen } = useSidebar()
 
   const { user, permissions } = useAuth()
+  const { installAvailable, openInstallModal } = usePwaInstall()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -104,6 +106,12 @@ export default function Sidebar() {
       active: location.pathname.startsWith('/settings'),
       onClick: () => { navigate('/settings'); setFlyout(null); setMobileOpen(false) },
     })
+    if (installAvailable) {
+      items.push({
+        key: 'install', icon: Download, label: 'Install App',
+        onClick: () => { openInstallModal(); setFlyout(null); setMobileOpen(false) },
+      })
+    }
     items.push({
       key: 'signout', icon: LogOut, label: 'Sign Out', danger: true,
       onClick: () => { handleLogout(); setFlyout(null); setMobileOpen(false) },
@@ -306,6 +314,15 @@ export default function Sidebar() {
                     <Settings size={13} className="flex-shrink-0" />
                     Settings
                   </button>
+                  {installAvailable && (
+                    <button
+                      onClick={() => { openInstallModal(); setMobileOpen(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-ios-blue hover:bg-ios-blue/10 transition-all"
+                    >
+                      <Download size={13} className="flex-shrink-0" />
+                      Install App
+                    </button>
+                  )}
                   <button
                     onClick={() => { handleLogout(); setMobileOpen(false) }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-ios-red hover:bg-ios-red/10 transition-all"

@@ -48,8 +48,13 @@ export default function TabNavigation() {
   return (
     <div
       className={`fixed left-1/2 -translate-x-1/2 z-50 sm:hidden transition-all duration-300 ease-in-out ${
-        isScrollingDown ? 'bottom-3 scale-90 opacity-80' : 'bottom-5 scale-100 opacity-100'
+        isScrollingDown ? 'scale-90 opacity-80' : 'scale-100 opacity-100'
       }`}
+      // Offset from the bottom edge + the iOS home-indicator inset, so the pill
+      // never sits under the home indicator when installed (standalone) on iPhone.
+      style={{
+        bottom: `calc(${isScrollingDown ? '0.75rem' : '1.25rem'} + env(safe-area-inset-bottom, 0px))`,
+      }}
     >
       <div className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/90 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-white/60">
         {navItems.map(({ label, Icon, active, onClick }) => (

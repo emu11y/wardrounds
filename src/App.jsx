@@ -9,6 +9,8 @@ import Sidebar from './components/Sidebar'
 import PageGuard from './components/PageGuard'
 import TabNavigation from './components/TabNavigation'
 import SessionGuard from './components/SessionGuard'
+import InstallModal from './components/pwa/InstallModal'
+import InstallBanner from './components/pwa/InstallBanner'
 
 // Route-level code splitting: each page ships as its own chunk, fetched on
 // first visit instead of all being bundled into one ~1.8MB upfront payload.
@@ -177,6 +179,10 @@ function AppInner() {
       {showTour && (
         <TooltipTour onComplete={handleOnboardingComplete} />
       )}
+      {/* PWA install UI — app-wide so it reaches logged-out mobile users too.
+          Each self-hides when the app isn't installable / is already installed. */}
+      <InstallBanner />
+      <InstallModal />
     </>
   )
 
