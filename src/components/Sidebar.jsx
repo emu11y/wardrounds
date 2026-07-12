@@ -136,12 +136,13 @@ export default function Sidebar() {
       {/* Sidebar panel */}
       <aside
         className={`
-          fixed top-3 bottom-3 left-3 md:relative md:top-auto md:bottom-auto md:left-auto
+          fixed top-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 md:relative md:top-auto md:bottom-auto md:left-auto
           z-40 md:z-auto
           flex flex-col md:h-[calc(100vh-1.5rem)]
           rounded-2xl
           glass border border-white/30
           shadow-xl
+          transform-gpu will-change-transform [backface-visibility:hidden]
           transition-all duration-300 ease-in-out
           ${mobileOpen ? 'translate-x-0' : '-translate-x-[120%] md:translate-x-0'}
           ${collapsed ? 'md:w-[72px]' : 'md:w-56'}

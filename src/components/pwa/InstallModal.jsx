@@ -87,24 +87,26 @@ export default function InstallModal() {
               </p>
             </div>
 
-            <ol className="mt-5 space-y-3">
-              <li className="flex items-center gap-3 rounded-2xl bg-black/[0.03] px-4 py-3">
+            <ol className="mt-5 space-y-2.5">
+              <li className="flex items-start gap-3 rounded-2xl bg-black/[0.03] px-4 py-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-ios-blue text-white text-xs font-bold flex items-center justify-center">
                   1
                 </span>
-                <span className="text-sm text-gray-800 flex items-center gap-1.5">
-                  Tap the <Share size={16} className="inline text-ios-blue" />
-                  <span className="font-semibold">Share</span> button below
-                </span>
+                <p className="text-sm text-gray-800 leading-relaxed">
+                  Tap the{' '}
+                  <Share size={15} className="inline-block align-[-2px] text-ios-blue" />{' '}
+                  <span className="font-semibold">Share</span> button in Safari's toolbar.
+                </p>
               </li>
-              <li className="flex items-center gap-3 rounded-2xl bg-black/[0.03] px-4 py-3">
+              <li className="flex items-start gap-3 rounded-2xl bg-black/[0.03] px-4 py-3">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-ios-blue text-white text-xs font-bold flex items-center justify-center">
                   2
                 </span>
-                <span className="text-sm text-gray-800 flex items-center gap-1.5">
-                  Choose <SquarePlus size={16} className="inline text-ios-blue" />
-                  <span className="font-semibold">Add to Home Screen</span>
-                </span>
+                <p className="text-sm text-gray-800 leading-relaxed">
+                  Choose{' '}
+                  <SquarePlus size={15} className="inline-block align-[-2px] text-ios-blue" />{' '}
+                  <span className="font-semibold">Add to Home Screen</span>.
+                </p>
               </li>
             </ol>
 
