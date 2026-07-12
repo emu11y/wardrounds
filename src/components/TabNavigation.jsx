@@ -59,7 +59,7 @@ export default function TabNavigation() {
       // the pill clears Safari/Chrome's bottom bar.
       style={{
         bottom: isStandalone
-          ? `calc(${isScrollingDown ? '0rem' : '0.25rem'} + env(safe-area-inset-bottom, 0px))`
+          ? `max(0px, calc(env(safe-area-inset-bottom, 0px) - ${isScrollingDown ? '0.75rem' : '0.5rem'}))`
           : `calc(${isScrollingDown ? '0.75rem' : '1.25rem'} + env(safe-area-inset-bottom, 0px))`,
       }}
     >

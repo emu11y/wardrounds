@@ -37,8 +37,9 @@ export default function InstallModal() {
   }
 
   return (
-    <ModalShell open={modalOpen} onClose={closeInstallModal} maxWidth="max-w-[300px]">
-      <div className="glass-rim rounded-3xl p-5">
+    <ModalShell open={modalOpen} onClose={closeInstallModal} maxWidth="max-w-[320px]">
+      <div className="glass-rim rounded-3xl p-2.5">
+        <div className="surface-shell p-5">
         {step === 'confirm' ? (
           <>
             <div className="flex flex-col items-center text-center">
@@ -122,6 +123,7 @@ export default function InstallModal() {
             </button>
           </>
         )}
+        </div>
       </div>
     </ModalShell>
   )
