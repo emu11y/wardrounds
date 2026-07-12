@@ -37,8 +37,8 @@ export default function InstallModal() {
   }
 
   return (
-    <ModalShell open={modalOpen} onClose={closeInstallModal} maxWidth="max-w-sm" surface="solid">
-      <div className="p-6">
+    <ModalShell open={modalOpen} onClose={closeInstallModal} maxWidth="max-w-[300px]">
+      <div className="glass-rim rounded-3xl p-5">
         {step === 'confirm' ? (
           <>
             <div className="flex flex-col items-center text-center">

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { BedDouble, Stethoscope, CalendarClock, Settings } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { usePwaInstall } from '../context/PwaInstallContext'
 
 export default function TabNavigation() {
   const navigate = useNavigate()
@@ -10,6 +11,7 @@ export default function TabNavigation() {
   const [isScrollingDown, setIsScrollingDown] = useState(false)
   const lastScrollY = useRef(0)
   const { user } = useAuth()
+  const { isStandalone } = usePwaInstall()
   const avatar_url = user?.avatar_url
   const nameParts = user?.full_name?.trim().split(/\s+/) || []
   const initials = nameParts.length > 1
@@ -52,8 +54,13 @@ export default function TabNavigation() {
       }`}
       // Offset from the bottom edge + the iOS home-indicator inset, so the pill
       // never sits under the home indicator when installed (standalone) on iPhone.
+      // Installed (standalone): sit lower — no browser toolbar to clear — giving
+      // page content more vertical real estate. In-browser: keep a larger gap so
+      // the pill clears Safari/Chrome's bottom bar.
       style={{
-        bottom: `calc(${isScrollingDown ? '0.75rem' : '1.25rem'} + env(safe-area-inset-bottom, 0px))`,
+        bottom: isStandalone
+          ? `calc(${isScrollingDown ? '0rem' : '0.25rem'} + env(safe-area-inset-bottom, 0px))`
+          : `calc(${isScrollingDown ? '0.75rem' : '1.25rem'} + env(safe-area-inset-bottom, 0px))`,
       }}
     >
       <div className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/90 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-white/60">
