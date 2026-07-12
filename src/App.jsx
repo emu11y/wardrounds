@@ -179,9 +179,8 @@ function AppInner() {
       {showTour && (
         <TooltipTour onComplete={handleOnboardingComplete} />
       )}
-      {/* PWA install UI — app-wide so it reaches logged-out mobile users too.
-          Each self-hides when the app isn't installable / is already installed. */}
-      <InstallBanner />
+      {/* Install confirm/steps modal — app-wide (opened from the banner or the
+          Sidebar "Install App" row). Self-hides when not installable. */}
       <InstallModal />
     </>
   )
@@ -197,6 +196,7 @@ function AppInner() {
 
   return (
     <>
+      <InstallBanner />
       {routes}
       {modals}
     </>

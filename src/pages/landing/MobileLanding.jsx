@@ -50,8 +50,12 @@ export default function MobileLanding() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* Floating glass header (static — no animation) */}
-      <header className="fixed inset-x-0 top-3 z-50 px-4">
+      {/* Floating glass header (static — no animation). Sits below the install
+          bar when it's showing (offset by --install-banner-h). */}
+      <header
+        className="fixed inset-x-0 z-50 px-4"
+        style={{ top: 'calc(0.75rem + var(--install-banner-h, 0px))' }}
+      >
         <nav className="mx-auto flex max-w-xl items-center justify-between gap-2 rounded-full border border-white/10 bg-slate-900/70 py-2 pl-3 pr-2 shadow-lg shadow-black/30 backdrop-blur-md">
           <div className="flex min-w-0 items-center gap-2">
             <img src="/wardrounds-icon.png" className="h-7 w-7 flex-shrink-0 object-contain" alt="WardRounds" />
@@ -74,8 +78,11 @@ export default function MobileLanding() {
         </nav>
       </header>
 
-      {/* Hero (pt clears the floating header) */}
-      <section className="px-5 pt-28 pb-16 text-center">
+      {/* Hero (pt clears the floating header + install bar) */}
+      <section
+        className="px-5 pb-16 text-center"
+        style={{ paddingTop: 'calc(7rem + var(--install-banner-h, 0px))' }}
+      >
         <h1 className="text-4xl font-bold leading-tight tracking-tight">
           Never lose another{' '}
           <span className="text-[#007AFF]">ward round</span>.
