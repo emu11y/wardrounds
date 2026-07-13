@@ -127,9 +127,11 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile overlay — no backdrop-blur: it mounts/unmounts as the sidebar
+          slides, and a toggled full-screen blur leaves a stale repaint strip at
+          the top on iOS WebKit (the "grey bar" bug). */}
       {mobileOpen && (
-        <Backdrop zIndex="z-40" onClick={() => setMobileOpen(false)} className="md:hidden" />
+        <Backdrop zIndex="z-40" onClick={() => setMobileOpen(false)} className="md:hidden" blur={false} />
       )}
 
 
