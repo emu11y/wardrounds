@@ -6,12 +6,22 @@ import { supabase } from './supabaseClient'
  *   RESEND_API_KEY, RESEND_FROM  (see supabase/functions/send-email/index.ts)
  */
 
-// Low-level sender. Throws on failure.
+// Low-level sender. Throws on failure, with the REAL reason extracted from the
+// Edge Function's response body (supabase-js hides non-2xx detail inside
+// FunctionsHttpError.context, so a bare `throw error` only yields a generic
+// "non-2xx status code" message).
 export async function sendEmail({ to, subject, html, text, replyTo }) {
   const { data, error } = await supabase.functions.invoke('send-email', {
     body: { to, subject, html, text, replyTo },
   })
-  if (error) throw error
+  if (error) {
+    let detail = error.message || 'Email function call failed'
+    try {
+      const body = await error.context?.json?.()
+      if (body?.error) detail = body.detail ? `${body.error}: ${JSON.stringify(body.detail)}` : body.error
+    } catch { /* context not JSON — keep generic message */ }
+    throw new Error(detail)
+  }
   if (data?.error) throw new Error(data.error)
   return data
 }
@@ -54,14 +64,21 @@ export function appointmentConfirmationEmail({ patientName, dateStr, timeLabel, 
 }
 
 // Fire-and-forget: never throws, never blocks the booking flow. Only sends when
-// a recipient email is present.
+// a recipient email is present. Returns a status object so callers can surface
+// the outcome (e.g. a toast) without the send ever breaking a booking:
+//   { ok: true }                     — sent
+//   { ok: false, skipped: true }     — no recipient, nothing attempted
+//   { ok: false, error: '<reason>' } — attempted but failed
 export async function sendAppointmentConfirmationSafe({ to, ...rest }) {
+  const recipient = (to || '').trim()
+  if (!recipient) return { ok: false, skipped: true }
   try {
-    const recipient = (to || '').trim()
-    if (!recipient) return
     const { subject, html } = appointmentConfirmationEmail(rest)
     await sendEmail({ to: recipient, subject, html })
+    return { ok: true }
   } catch (e) {
-    console.warn('Appointment confirmation email failed (non-blocking):', e?.message || e)
+    const error = e?.message || String(e)
+    console.warn('Appointment confirmation email failed (non-blocking):', error)
+    return { ok: false, error }
   }
 }

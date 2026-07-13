@@ -863,6 +863,7 @@ export default function MyAppointments() {
         slotStatus={bookingSlot?.status}
         lockedDoctorId={selectedDoctorId}
         prefillPatient={prefillPatient}
+        notify={showToast}
         onVisitCreated={() => {
           setBookingSlot(null)
           setPrefillPatient(null)

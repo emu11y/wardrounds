@@ -18,7 +18,7 @@ const TABS = [
 ]
 
 
-export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated, slotDate, slotTime, slotStatus, prefillPatient, visitType, lockedDoctorId = null }) {
+export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated, slotDate, slotTime, slotStatus, prefillPatient, visitType, lockedDoctorId = null, notify }) {
   const { user } = useAuth()
 
   const [tab, setTab] = useState('search')
@@ -215,15 +215,21 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
         await updatePatientContact(selectedPatient.id, contact)
       }
 
-      // Fire-and-forget appointment confirmation email (no-op if no email on file
-      // or Resend isn't configured yet). Never blocks the booking.
-      sendAppointmentConfirmationSafe({
-        to: (selectedPatient?.email || newPatientEmail || bookingEmail || '').trim(),
-        patientName,
-        dateStr: effectiveDate,
-        timeLabel: fmtSlot(effectiveSlot),
-        hospitalName: hospitals.find(h => h.id === hospitalId)?.name,
-      })
+      // Appointment confirmation email — non-blocking, but report the outcome so a
+      // silent Resend/deploy failure surfaces instead of vanishing.
+      const emailTo = (selectedPatient?.email || newPatientEmail || bookingEmail || '').trim()
+      if (emailTo) {
+        sendAppointmentConfirmationSafe({
+          to: emailTo,
+          patientName,
+          dateStr: effectiveDate,
+          timeLabel: fmtSlot(effectiveSlot),
+          hospitalName: hospitals.find(h => h.id === hospitalId)?.name,
+        }).then(res => {
+          if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
+          else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
+        })
+      }
       await logActivity({
         user, action: 'log_visit', entityType: 'visit', entityId: visit?.id,
         patientId, patientName,

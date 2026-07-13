@@ -38,7 +38,7 @@ function countSeen(visits, doctorId, hospitalId) {
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked }) {
+function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked, notify }) {
   const [date, setDate]             = useState(todayStr())
   const [selectedSlot, setSlot]     = useState(null)
   const [selectedHospitalId, setHospitalId] = useState(visit.hospital_id || (hospitals[0]?.id ?? null))
@@ -110,14 +110,21 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked }) {
         await updatePatientContact(patient.id, { email: bookingEmail.trim() })
           .catch(err => console.error('Booking saved, but email could not be stored', err))
       }
-      // Fire-and-forget appointment confirmation email (no-op if no email / Resend off)
-      sendAppointmentConfirmationSafe({
-        to: (patient?.email || bookingEmail || '').trim(),
-        patientName,
-        dateStr: date,
-        timeLabel: fmtSlot(selectedSlot),
-        hospitalName: hospitals.find(h => h.id === selectedHospitalId)?.name,
-      })
+      // Appointment confirmation email — non-blocking, but surface the outcome so a
+      // silent Resend/deploy failure is visible instead of vanishing.
+      const emailTo = (patient?.email || bookingEmail || '').trim()
+      if (emailTo) {
+        sendAppointmentConfirmationSafe({
+          to: emailTo,
+          patientName,
+          dateStr: date,
+          timeLabel: fmtSlot(selectedSlot),
+          hospitalName: hospitals.find(h => h.id === selectedHospitalId)?.name,
+        }).then(res => {
+          if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
+          else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
+        })
+      }
       // Grey out the confirmed slot immediately
       setBooked(prev => [...prev, selectedSlot])
       setSlot(null)
@@ -1115,6 +1122,7 @@ export default function Outpatient() {
           hospitals={hospitals}
           onClose={() => setBookingVisit(null)}
           onBooked={handleBooked}
+          notify={showToast}
         />
       )}
 
