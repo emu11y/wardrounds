@@ -67,6 +67,16 @@ function ProtectedLayout({ children }) {
 
   return (
     <SidebarProvider>
+      {/* Solid white backing behind the iOS status bar so the top reads clean
+          (matching the white header) instead of the shell's grey showing through
+          in standalone. Height is env(safe-area-inset-top) — 0 in a normal
+          browser tab, so this is a no-op there. z-index sits below the sidebar,
+          overlay (z-40) and header (z-61) so it never covers them. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed top-0 inset-x-0 z-[35] bg-white"
+        style={{ height: 'env(safe-area-inset-top, 0px)' }}
+      />
       <div className="flex h-dvh overflow-hidden bg-ios-gray-6 dark:bg-gray-900 p-3 gap-3">
         <Sidebar />
         <main className="relative flex-1 flex flex-col overflow-hidden rounded-3xl bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm">
