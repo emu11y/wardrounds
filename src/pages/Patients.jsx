@@ -136,7 +136,7 @@ function EditPatientModal({ open, patient, onClose, onSaved }) {
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Date of birth</label>
-            <input type="date" className={inputClass} value={dob} onChange={e => setDob(e.target.value)} />
+            <input type="date" className={`${inputClass} appearance-none min-h-[38px] [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:m-0`} value={dob} onChange={e => setDob(e.target.value)} />
           </div>
 
           <div>

@@ -364,6 +364,7 @@ export default function Outpatient() {
   const [expandedVisitId, setExpandedVisitId] = useState(null)
   const [interactionsCache, setInteractionsCache] = useState({})
   const [closeVisitModal, setCloseVisitModal] = useState(null)  // visit object being closed, or null
+  const [postCloseVisit, setPostCloseVisit] = useState(null)    // just-closed visit → offer a follow-up booking
   const [closingVisitId, setClosingVisitId] = useState(null)
   const [actionsOpenVisitId, setActionsOpenVisitId] = useState(null)
 
@@ -459,13 +460,16 @@ export default function Outpatient() {
     }
   }
 
-  async function handleCloseVisit(visitId) {
-    setClosingVisitId(visitId)
+  async function handleCloseVisit(visitOrId) {
+    const visit = typeof visitOrId === 'object' ? visitOrId : { id: visitOrId }
+    setClosingVisitId(visit.id)
     try {
-      const updated = await closeVisit(visitId)
+      const updated = await closeVisit(visit.id)
       setVisits(prev => prev.map(v => v.id === updated.id ? { ...v, status: 'closed' } : v))
       setCloseVisitModal(null)
       setExpandedVisitId(null)
+      // Offer an immediate follow-up booking (which also sends the confirmation email)
+      if (visit.hospital_id) setPostCloseVisit({ ...visit, status: 'closed' })
     } catch (err) {
       console.error(err)
       showToast('Failed to close the visit — please try again.')
@@ -1114,6 +1118,43 @@ export default function Outpatient() {
         />
       )}
 
+      {/* Post-close: offer an immediate follow-up booking (also sends the confirmation email) */}
+      {postCloseVisit && (() => {
+        const p = postCloseVisit.patients
+        const name = p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Patient' : 'Patient'
+        return (
+          <ModalShell onClose={() => setPostCloseVisit(null)} maxWidth="max-w-sm">
+            <div className="glass-rim rounded-3xl p-2.5">
+              <div className="surface-shell p-6 text-center">
+                <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-bold text-gray-900">Visit Closed</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-5">
+                  {name}{p?.email ? ` · a confirmation goes to ${p.email}` : ''}
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => { setBookingVisit(postCloseVisit); setPostCloseVisit(null) }}
+                    className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-ios-blue text-white shadow-ios-card transition-opacity hover:opacity-90"
+                  >
+                    Book Follow-up Appointment
+                  </button>
+                  <button
+                    onClick={() => setPostCloseVisit(null)}
+                    className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-black/[0.06] text-gray-700 hover:bg-black/10 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </ModalShell>
+        )
+      })()}
+
       {/* Log Outpatient Visit modal — scan-first, stamped "now", no date/slot picker.
           (The appointment-booking NewVisitModal lives on the Appointments page.) */}
       <LogVisitModal
@@ -1135,8 +1176,8 @@ export default function Outpatient() {
         const isClosing = closingVisitId === visit.id
         const patientName = visit.patients ? `${visit.patients.first_name} ${visit.patients.last_name}` : 'Patient'
         return (
-          <ModalShell onClose={() => setCloseVisitModal(null)}>
-            <div className="glass-rim rounded-3xl p-2.5 w-full max-w-sm mx-4">
+          <ModalShell onClose={() => setCloseVisitModal(null)} maxWidth="max-w-sm">
+            <div className="glass-rim rounded-3xl p-2.5">
               <div className="surface-shell p-6">
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-base font-bold text-gray-900">Close Visit</h3>
@@ -1196,7 +1237,7 @@ export default function Outpatient() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => handleCloseVisit(visit.id)}
+                    onClick={() => handleCloseVisit(visit)}
                     disabled={isClosing}
                     className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-gray-800 text-white hover:bg-gray-900 transition-colors disabled:opacity-50"
                   >
