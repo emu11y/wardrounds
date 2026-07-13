@@ -3,7 +3,7 @@ import { Search, ChevronDown, ChevronUp, UserPlus, Clock, MapPin, RotateCcw, Rec
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
-import { fetchPatients, fetchAdmissionsForPatient, createAdmission, fetchAdmissionServices, fetchOutpatientVisitsForPatient, fetchVisitNotes, fetchHospitals, createOutpatientVisit, updatePatientContact } from '../lib/api'
+import { fetchPatients, fetchAdmissionsForPatient, createAdmission, fetchAdmissionServices, fetchOutpatientVisitsForPatient, fetchVisitNotes, fetchHospitals, createOutpatientVisit, updatePatient } from '../lib/api'
 import { wardBillingLines, wardTotal, wardColor } from '../lib/billing'
 import { getStatusBadgeStyle, getOutpatientStatusStyle } from '../lib/statusBadges'
 import { calcAge, formatDate, darken, formatKES } from '../lib/utils'
@@ -69,6 +69,113 @@ function HospitalPickerModal({ open, mode, patient, hospitals, teamId, onClose, 
   )
 }
 
+function EditPatientModal({ open, patient, onClose, onSaved }) {
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName]   = useState('')
+  const [dob, setDob]             = useState('')
+  const [phone, setPhone]         = useState('')
+  const [email, setEmail]         = useState('')
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState(null)
+
+  useEffect(() => {
+    if (open && patient) {
+      setFirstName(patient.first_name || '')
+      setLastName(patient.last_name || '')
+      setDob(patient.date_of_birth || '')
+      setPhone(patient.phone || '')
+      setEmail(patient.email || '')
+      setError(null)
+    }
+  }, [open, patient])
+
+  if (!open) return null
+
+  async function handleSave() {
+    if (!firstName.trim() && !lastName.trim()) {
+      setError('Enter at least a first or last name.')
+      return
+    }
+    setError(null)
+    setSaving(true)
+    try {
+      await updatePatient(patient.id, {
+        first_name:    firstName.trim() || null,
+        last_name:     lastName.trim()  || null,
+        date_of_birth: dob              || null,
+        phone:         phone.trim()     || null,
+        email:         email.trim()     || null,
+      })
+      onSaved?.()
+    } catch (e) {
+      console.error('Failed to update patient', e)
+      setError(e.message || 'Failed to save changes — please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputClass = 'w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30'
+
+  return (
+    <ModalShell onClose={onClose} maxWidth="max-w-sm">
+      <div className="glass-rim rounded-3xl p-2.5">
+        <div className="surface-shell p-6 space-y-3">
+          <h2 className="font-bold text-base text-gray-900">Edit Patient Details</h2>
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1">First name</label>
+              <input className={inputClass} value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Last name</label>
+              <input className={inputClass} value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Date of birth</label>
+            <input type="date" className={inputClass} value={dob} onChange={e => setDob(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Mobile number <span className="text-gray-400 font-normal">(for SMS reminders)</span>
+            </label>
+            <input type="tel" className={inputClass} value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 0712 345 678" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Email <span className="text-gray-400 font-normal">(for email reminders)</span>
+            </label>
+            <input type="email" className={inputClass} value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g. patient@email.com" />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-ios-blue text-white disabled:opacity-50 transition-opacity"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  )
+}
+
 export default function Patients() {
   const { user, permissions } = useAuth()
   const navigate = useNavigate()
@@ -107,10 +214,7 @@ export default function Patients() {
   const [exportLoading, setExportLoading] = useState(false)
   const [isScrollingPatients, setIsScrollingPatients] = useState(false)
   const scrollTimerRef = useRef(null)
-  const [editingPhoneId, setEditingPhoneId] = useState(null)
-  const [editingPhoneValue, setEditingPhoneValue] = useState('')
-  const [editingEmailId, setEditingEmailId] = useState(null)
-  const [editingEmailValue, setEditingEmailValue] = useState('')
+  const [editPatient, setEditPatient] = useState(null)
   const [toast, setToast] = useState(null)
   const [outpatientErrorMap, setOutpatientErrorMap] = useState({})
   const [visitNotesErrorMap, setVisitNotesErrorMap] = useState({})
@@ -757,109 +861,45 @@ export default function Patients() {
                             )
                           })()}
                         </div>
-                        {/* ROW 3: phone inline edit */}
-                        {editingPhoneId === patient.id ? (
-                          <span className="mt-0.5 flex items-center gap-1">
-                            <input
-                              type="tel"
-                              value={editingPhoneValue}
-                              onChange={e => setEditingPhoneValue(e.target.value)}
-                              placeholder="0712 345 678"
-                              className="w-32 px-2 py-0.5 text-xs rounded-lg border border-[#007AFF]/40 focus:outline-none focus:ring-1 focus:ring-[#007AFF]/30"
-                              autoFocus
-                            />
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await updatePatientContact(patient.id, { phone: editingPhoneValue })
-                                  setEditingPhoneId(null)
-                                  load()
-                                } catch (e) {
-                                  console.error('Failed to save phone number', e)
-                                }
-                              }}
-                              className="text-[10px] font-semibold text-[#007AFF] px-2 py-0.5 rounded-lg bg-[#007AFF]/10"
-                            >Save</button>
-                            <button
-                              onClick={() => setEditingPhoneId(null)}
-                              className="text-[10px] text-gray-400 px-1"
-                            >✕</button>
-                          </span>
-                        ) : (
-                          <span className="mt-0.5 flex items-center gap-1 text-gray-500">
-                            {patient.phone ? (
-                              <>
-                                <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.137l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.137-.502l4.493 1.498A1 1 0 0121 17.72V21a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/>
-                                </svg>
-                                <span className="text-xs">{patient.phone}</span>
-                              </>
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">No mobile</span>
-                            )}
-                            <button
-                              onClick={() => { setEditingPhoneId(patient.id); setEditingPhoneValue(patient.phone || '') }}
-                              className="text-gray-300 hover:text-[#007AFF] transition-colors"
-                              title="Edit phone number"
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                              </svg>
-                            </button>
-                          </span>
-                        )}
-                        {/* ROW 4: email inline edit */}
-                        {editingEmailId === patient.id ? (
-                          <span className="mt-0.5 flex items-center gap-1">
-                            <input
-                              type="email"
-                              value={editingEmailValue}
-                              onChange={e => setEditingEmailValue(e.target.value)}
-                              placeholder="patient@email.com"
-                              className="w-40 px-2 py-0.5 text-xs rounded-lg border border-[#007AFF]/40 focus:outline-none focus:ring-1 focus:ring-[#007AFF]/30"
-                              autoFocus
-                            />
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await updatePatientContact(patient.id, { email: editingEmailValue })
-                                  setEditingEmailId(null)
-                                  load()
-                                } catch (e) {
-                                  console.error('Failed to save email', e)
-                                  showToast('Failed to save the email — please try again.')
-                                }
-                              }}
-                              className="text-[10px] font-semibold text-[#007AFF] px-2 py-0.5 rounded-lg bg-[#007AFF]/10"
-                            >Save</button>
-                            <button
-                              onClick={() => setEditingEmailId(null)}
-                              className="text-[10px] text-gray-400 px-1"
-                            >✕</button>
-                          </span>
-                        ) : (
-                          <span className="mt-0.5 flex items-center gap-1 text-gray-500">
-                            {patient.email ? (
-                              <>
-                                <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                                </svg>
-                                <span className="text-xs break-all">{patient.email}</span>
-                              </>
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">No email</span>
-                            )}
-                            <button
-                              onClick={() => { setEditingEmailId(patient.id); setEditingEmailValue(patient.email || '') }}
-                              className="text-gray-300 hover:text-[#007AFF] transition-colors"
-                              title="Edit email"
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                              </svg>
-                            </button>
-                          </span>
-                        )}
+                        {/* ROW 3: contact (read-only) + single edit-details button */}
+                        <div className="mt-0.5 flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="flex items-center gap-1 text-gray-500">
+                              {patient.phone ? (
+                                <>
+                                  <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.137l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.137-.502l4.493 1.498A1 1 0 0121 17.72V21a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/>
+                                  </svg>
+                                  <span className="text-xs truncate">{patient.phone}</span>
+                                </>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">No mobile</span>
+                              )}
+                            </span>
+                            <span className="mt-0.5 flex items-center gap-1 text-gray-500">
+                              {patient.email ? (
+                                <>
+                                  <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                  </svg>
+                                  <span className="text-xs break-all">{patient.email}</span>
+                                </>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">No email</span>
+                              )}
+                            </span>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditPatient(patient) }}
+                            title="Edit patient details"
+                            className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-[#007AFF] bg-[#007AFF]/10 hover:bg-[#007AFF]/20 transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                            </svg>
+                            Edit
+                          </button>
+                        </div>
                       </div>
                       {/* Chevron — self-centre against the full two-line block */}
                       <div className="flex-shrink-0 self-center pl-2">
@@ -1328,6 +1368,13 @@ export default function Patients() {
         loading={pickerLoading}
         onClose={() => setHospitalPickerOpen(false)}
         onConfirm={handlePickerConfirm}
+      />
+
+      <EditPatientModal
+        open={!!editPatient}
+        patient={editPatient}
+        onClose={() => setEditPatient(null)}
+        onSaved={() => { setEditPatient(null); load(); showToast('Patient details updated.', 'success') }}
       />
 
       {/* ── Confirm Modal ── */}

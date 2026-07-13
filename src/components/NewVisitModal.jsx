@@ -318,14 +318,14 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <input
-                      className="flex-1 ios-input text-sm"
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
                       placeholder="First name"
                       value={firstName}
                       onChange={e => setFirstName(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleCreatePatient()}
                     />
                     <input
-                      className="flex-1 ios-input text-sm"
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
                       placeholder="Last name"
                       value={lastName}
                       onChange={e => setLastName(e.target.value)}
@@ -334,7 +334,7 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
                   </div>
                   <input
                     type="date"
-                    className="w-full ios-input text-sm"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
                     value={dob}
                     onChange={e => setDob(e.target.value)}
                   />

@@ -7,8 +7,9 @@ import {
   fetchOutpatientVisitsFiltered, fetchOpenOutpatientVisits, fetchPatientInteractions,
   fetchHospitals, fetchTeamMembers, fetchMembersWithPositions, closeVisit, bookAppointment,
   addVisitNote, fetchAllPatientVisitNotes, fetchTeamServices,
-  addVisitService, deleteVisitService, ALL_TIME_SLOTS, fmtSlot,
+  addVisitService, deleteVisitService, ALL_TIME_SLOTS, fmtSlot, updatePatientContact,
 } from '../lib/api'
+import { sendAppointmentConfirmationSafe } from '../lib/email'
 import LogVisitModal from '../components/LogVisitModal'
 import TopHeader from '../components/TopHeader'
 import ModalShell from '../components/ModalShell'
@@ -42,6 +43,7 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked }) {
   const [selectedSlot, setSlot]     = useState(null)
   const [selectedHospitalId, setHospitalId] = useState(visit.hospital_id || (hospitals[0]?.id ?? null))
   const [notes, setNotes]           = useState('')
+  const [bookingEmail, setBookingEmail] = useState('')
   const [bookedSlots, setBooked]    = useState([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -103,6 +105,19 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked }) {
         visit.patient_id, selectedHospitalId, teamId, userId, date, selectedSlot, notes,
         visit.doctor_id,
       )
+      // Save a newly-entered email (existing patient without one on file)
+      if (patient?.id && !patient.email && bookingEmail.trim()) {
+        await updatePatientContact(patient.id, { email: bookingEmail.trim() })
+          .catch(err => console.error('Booking saved, but email could not be stored', err))
+      }
+      // Fire-and-forget appointment confirmation email (no-op if no email / Resend off)
+      sendAppointmentConfirmationSafe({
+        to: (patient?.email || bookingEmail || '').trim(),
+        patientName,
+        dateStr: date,
+        timeLabel: fmtSlot(selectedSlot),
+        hospitalName: hospitals.find(h => h.id === selectedHospitalId)?.name,
+      })
       // Grey out the confirmed slot immediately
       setBooked(prev => [...prev, selectedSlot])
       setSlot(null)
@@ -255,6 +270,31 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked }) {
               className="w-full px-3 py-2 text-sm rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 resize-none"
             />
           </div>
+
+          {/* Email reminder — add for patients without one, or show the address on file */}
+          {patient?.id && !patient.email && (
+            <div className="p-3 rounded-2xl bg-blue-50/80 border border-blue-100">
+              <p className="text-xs font-medium text-blue-700 mb-2">
+                📧 Add email for a confirmation? <span className="font-normal text-blue-400">(optional)</span>
+              </p>
+              <input
+                type="email"
+                placeholder="e.g. patient@email.com"
+                value={bookingEmail}
+                onChange={e => setBookingEmail(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm rounded-xl border border-blue-200 bg-white focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
+              />
+              <p className="text-[10px] text-blue-400 mt-1">Skip to book without — you can add it later from the Patients list.</p>
+            </div>
+          )}
+          {patient?.id && patient.email && (
+            <div className="p-3 rounded-2xl bg-white/80 border border-gray-100">
+              <p className="text-xs text-gray-500">
+                📧 A confirmation will be sent to <span className="font-semibold text-gray-700">{patient.email}</span>
+              </p>
+            </div>
+          )}
+
           {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             <button
