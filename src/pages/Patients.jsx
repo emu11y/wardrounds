@@ -109,6 +109,8 @@ export default function Patients() {
   const scrollTimerRef = useRef(null)
   const [editingPhoneId, setEditingPhoneId] = useState(null)
   const [editingPhoneValue, setEditingPhoneValue] = useState('')
+  const [editingEmailId, setEditingEmailId] = useState(null)
+  const [editingEmailValue, setEditingEmailValue] = useState('')
   const [toast, setToast] = useState(null)
   const [outpatientErrorMap, setOutpatientErrorMap] = useState({})
   const [visitNotesErrorMap, setVisitNotesErrorMap] = useState({})
@@ -799,6 +801,58 @@ export default function Patients() {
                               onClick={() => { setEditingPhoneId(patient.id); setEditingPhoneValue(patient.phone || '') }}
                               className="text-gray-300 hover:text-[#007AFF] transition-colors"
                               title="Edit phone number"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                              </svg>
+                            </button>
+                          </span>
+                        )}
+                        {/* ROW 4: email inline edit */}
+                        {editingEmailId === patient.id ? (
+                          <span className="mt-0.5 flex items-center gap-1">
+                            <input
+                              type="email"
+                              value={editingEmailValue}
+                              onChange={e => setEditingEmailValue(e.target.value)}
+                              placeholder="patient@email.com"
+                              className="w-40 px-2 py-0.5 text-xs rounded-lg border border-[#007AFF]/40 focus:outline-none focus:ring-1 focus:ring-[#007AFF]/30"
+                              autoFocus
+                            />
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await updatePatientContact(patient.id, { email: editingEmailValue })
+                                  setEditingEmailId(null)
+                                  load()
+                                } catch (e) {
+                                  console.error('Failed to save email', e)
+                                  showToast('Failed to save the email — please try again.')
+                                }
+                              }}
+                              className="text-[10px] font-semibold text-[#007AFF] px-2 py-0.5 rounded-lg bg-[#007AFF]/10"
+                            >Save</button>
+                            <button
+                              onClick={() => setEditingEmailId(null)}
+                              className="text-[10px] text-gray-400 px-1"
+                            >✕</button>
+                          </span>
+                        ) : (
+                          <span className="mt-0.5 flex items-center gap-1 text-gray-500">
+                            {patient.email ? (
+                              <>
+                                <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                                <span className="text-xs break-all">{patient.email}</span>
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">No email</span>
+                            )}
+                            <button
+                              onClick={() => { setEditingEmailId(patient.id); setEditingEmailValue(patient.email || '') }}
+                              className="text-gray-300 hover:text-[#007AFF] transition-colors"
+                              title="Edit email"
                             >
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
