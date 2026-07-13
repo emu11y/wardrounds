@@ -127,12 +127,18 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay — no backdrop-blur: it mounts/unmounts as the sidebar
-          slides, and a toggled full-screen blur leaves a stale repaint strip at
-          the top on iOS WebKit (the "grey bar" bug). */}
-      {mobileOpen && (
-        <Backdrop zIndex="z-40" onClick={() => setMobileOpen(false)} className="md:hidden" blur={false} />
-      )}
+      {/* Mobile overlay — ALWAYS mounted, toggled via opacity (never conditionally
+          mounted). On iOS WebKit, mounting/unmounting a full-screen fixed element
+          leaves a stale repaint strip at the top over the sticky header (the
+          "grey bar that lingers"). Keeping it mounted and fading opacity avoids
+          that layer create/destroy. pointer-events-none when hidden so it never
+          blocks taps. No blur, for performance. */}
+      <Backdrop
+        zIndex="z-40"
+        onClick={() => setMobileOpen(false)}
+        blur={false}
+        className={`md:hidden transition-opacity duration-300 ease-in-out ${mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      />
 
 
       {/* Sidebar panel */}
