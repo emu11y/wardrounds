@@ -127,18 +127,10 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay — ALWAYS mounted, toggled via opacity (never conditionally
-          mounted). On iOS WebKit, mounting/unmounting a full-screen fixed element
-          leaves a stale repaint strip at the top over the sticky header (the
-          "grey bar that lingers"). Keeping it mounted and fading opacity avoids
-          that layer create/destroy. pointer-events-none when hidden so it never
-          blocks taps. No blur, for performance. */}
-      <Backdrop
-        zIndex="z-40"
-        onClick={() => setMobileOpen(false)}
-        blur={false}
-        className={`md:hidden transition-opacity duration-300 ease-in-out ${mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-      />
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <Backdrop zIndex="z-40" onClick={() => setMobileOpen(false)} className="md:hidden" />
+      )}
 
 
       {/* Sidebar panel */}
@@ -150,7 +142,6 @@ export default function Sidebar() {
           rounded-2xl
           glass border border-white/30
           shadow-xl
-          transform-gpu will-change-transform [backface-visibility:hidden]
           transition-all duration-300 ease-in-out
           ${mobileOpen ? 'translate-x-0' : '-translate-x-[120%] md:translate-x-0'}
           ${collapsed ? 'md:w-[72px]' : 'md:w-56'}
