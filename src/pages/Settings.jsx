@@ -11,7 +11,7 @@ import {
   fetchHospitalWards, addHospitalWard, deleteHospitalWard,
   fetchTeamMembers, fetchUserPermissions, updateUserRole, updateUserPermissions, resetUserPermissions, fetchActivityLogs,
   archiveMember, restoreMember, updateUserProfile, fetchMemberActivity, inviteTeamMember,
-  fetchTeamPositions, updateUserPosition, fetchMembersWithPositions,
+  fetchTeamPositions, updateUserPosition, updatePositionClinical, fetchMembersWithPositions,
   fetchTeamDetails,
 } from '../lib/api'
 import { resolvePermissions, ROLE_LABELS, PERMISSION_LABELS, PERMISSION_KEYS } from '../lib/permissions'
@@ -1953,6 +1953,35 @@ export default function Settings() {
                         }}
                       />
                     )}
+                    {/* Clinical toggle for the selected position — admin only. Doctors are
+                        clinical by default; admins can opt a nurse/physio/etc. in here.
+                        Affects everyone holding this position. */}
+                    {drawerForm.position_id && permissions?.can_manage_team === true && addingPositionFor !== 'drawer' && (() => {
+                      const pos = positions.find(p => p.id === drawerForm.position_id)
+                      if (!pos) return null
+                      return (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] text-gray-400">In doctor pickers &amp; bookings:</span>
+                          {[[true, 'Clinical'], [false, 'Non-clinical']].map(([val, label]) => (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const updated = await updatePositionClinical(pos.id, val)
+                                  setPositions(prev => prev.map(p => p.id === pos.id ? { ...p, is_clinical: updated.is_clinical } : p))
+                                  showToast(`"${pos.name}" is now ${val ? 'clinical' : 'non-clinical'}`)
+                                } catch (e) { showToast('Could not update position') }
+                              }}
+                              style={pos.is_clinical === val ? { backgroundColor: '#007AFF' } : undefined}
+                              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${pos.is_clinical === val ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:text-gray-700'}`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Remaining fields */}

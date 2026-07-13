@@ -871,11 +871,24 @@ export async function saveTeamProfile(teamId, updates) {
 export async function fetchTeamPositions(teamId) {
   const { data, error } = await supabase
     .from('team_positions')
-    .select('id, name, sort_order')
+    .select('id, name, sort_order, is_clinical')
     .eq('team_id', teamId)
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data || []
+}
+
+// Toggle whether a position counts as clinical (shows in doctor pickers /
+// bookings). Affects every member holding this position.
+export async function updatePositionClinical(positionId, isClinical) {
+  const { data, error } = await supabase
+    .from('team_positions')
+    .update({ is_clinical: !!isClinical })
+    .eq('id', positionId)
+    .select('id, name, sort_order, is_clinical')
+    .single()
+  if (error) throw error
+  return data
 }
 
 export async function updateUserPosition(userId, positionId) {
@@ -893,7 +906,7 @@ export async function createTeamPosition(teamId, name, isClinical) {
   const { data, error } = await supabase
     .from('team_positions')
     .insert({ team_id: teamId, name: name.trim(), is_clinical: !!isClinical })
-    .select('id, name, sort_order')
+    .select('id, name, sort_order, is_clinical')
     .single()
   if (error) throw error
   return data
