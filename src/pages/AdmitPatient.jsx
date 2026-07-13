@@ -35,6 +35,7 @@ export default function AdmitPatient() {
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [insurance, setInsurance] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
 
   // Admission fields
   const [hospitalId, setHospitalId] = useState('')
@@ -165,6 +166,7 @@ export default function AdmitPatient() {
     setDateOfBirth('')
     setInsurance('')
     setPhone('')
+    setEmail('')
     setSearchQuery('')
     setSearchResults([])
     setActiveAdmissionWarning(null)
@@ -269,6 +271,7 @@ export default function AdmitPatient() {
             date_of_birth: dateOfBirth || null,
             insurance_name: insurance || null,
             phone: phone || null,
+            email: email || null,
           })
           patientId = newPatient.id
         }
@@ -330,6 +333,7 @@ export default function AdmitPatient() {
     setDateOfBirth('')
     setInsurance('')
     setPhone('')
+    setEmail('')
     setHospitalId('')
     setWard('')
     setAdmissionDate(nowLocalDT())
@@ -596,6 +600,16 @@ export default function AdmitPatient() {
                 onChange={e => setPhone(e.target.value)}
                 className="ios-input"
                 placeholder="e.g. 0712 345 678"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Email <span className="text-ios-gray-2 font-normal">(optional)</span></label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="ios-input"
+                placeholder="e.g. patient@email.com"
               />
             </div>
           </div>

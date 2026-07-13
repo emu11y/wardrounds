@@ -43,7 +43,9 @@ export default function LogVisitModal({ open, onClose, hospitals, teamMembers = 
   const [lastName, setLastName]   = useState('')
   const [dob, setDob]             = useState('')
   const [newPatientPhone, setNewPatientPhone] = useState('')
+  const [newPatientEmail, setNewPatientEmail] = useState('')
   const [bookingPhone, setBookingPhone] = useState('')
+  const [bookingEmail, setBookingEmail] = useState('')
 
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
@@ -72,7 +74,9 @@ export default function LogVisitModal({ open, onClose, hospitals, teamMembers = 
     setLastName('')
     setDob('')
     setNewPatientPhone('')
+    setNewPatientEmail('')
     setBookingPhone('')
+    setBookingEmail('')
     setError(null)
     setScanPreview(null)
     setIsScanning(false)
@@ -155,6 +159,7 @@ export default function LogVisitModal({ open, onClose, hospitals, teamMembers = 
             last_name:     selectedPatient.last_name     || null,
             date_of_birth: selectedPatient.date_of_birth || null,
             phone:         newPatientPhone || null,
+            email:         newPatientEmail || null,
             team_id:       user.team_id,
           })
           patientId = p.id
@@ -171,8 +176,11 @@ export default function LogVisitModal({ open, onClose, hospitals, teamMembers = 
         doctor_id:           doctorId,
         patient_hospital_id: scannedHospitalId || selectedPatient.patient_hospital_id || null,
       })
-      if (bookingPhone.trim() && selectedPatient.id) {
-        await updatePatientContact(selectedPatient.id, { phone: bookingPhone })
+      if (selectedPatient.id && (bookingPhone.trim() || bookingEmail.trim())) {
+        const contact = {}
+        if (bookingPhone.trim()) contact.phone = bookingPhone.trim()
+        if (bookingEmail.trim()) contact.email = bookingEmail.trim()
+        await updatePatientContact(selectedPatient.id, contact)
       }
       await logActivity({
         user, action: 'log_visit', entityType: 'visit', entityId: visit?.id,
@@ -296,6 +304,18 @@ export default function LogVisitModal({ open, onClose, hospitals, teamMembers = 
                       placeholder="e.g. 0712 345 678"
                       value={newPatientPhone}
                       onChange={e => setNewPatientPhone(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Email <span className="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. patient@email.com"
+                      value={newPatientEmail}
+                      onChange={e => setNewPatientEmail(e.target.value)}
                       className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
                     />
                   </div>
@@ -453,6 +473,29 @@ export default function LogVisitModal({ open, onClose, hospitals, teamMembers = 
                 <div className="mt-3 p-3 rounded-2xl bg-white/80 border border-gray-100">
                   <p className="text-xs text-gray-500">
                     📱 SMS reminders will be sent to <span className="font-semibold text-gray-700">{selectedPatient.phone}</span>
+                  </p>
+                </div>
+              )}
+
+              {selectedPatient.id && !selectedPatient.email && (
+                <div className="mt-3 p-3 rounded-2xl bg-blue-50/80 border border-blue-100">
+                  <p className="text-xs font-medium text-blue-700 mb-2">
+                    📧 Add email for reminders? <span className="font-normal text-blue-400">(optional)</span>
+                  </p>
+                  <input
+                    type="email"
+                    placeholder="e.g. patient@email.com"
+                    value={bookingEmail}
+                    onChange={e => setBookingEmail(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm rounded-xl border border-blue-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+                  />
+                  <p className="text-[10px] text-blue-400 mt-1">Skip to log without — you can add it later from the Patients list.</p>
+                </div>
+              )}
+              {selectedPatient.id && selectedPatient.email && (
+                <div className="mt-3 p-3 rounded-2xl bg-white/80 border border-gray-100">
+                  <p className="text-xs text-gray-500">
+                    📧 Email reminders will be sent to <span className="font-semibold text-gray-700">{selectedPatient.email}</span>
                   </p>
                 </div>
               )}
