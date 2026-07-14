@@ -338,12 +338,17 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
                       onKeyDown={e => e.key === 'Enter' && handleCreatePatient()}
                     />
                   </div>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
-                    value={dob}
-                    onChange={e => setDob(e.target.value)}
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Date of Birth
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 appearance-none min-h-[38px] [&::-webkit-date-and-time-value]:text-left"
+                      value={dob}
+                      onChange={e => setDob(e.target.value)}
+                    />
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
                       Mobile Number <span className="text-gray-400 font-normal">(optional)</span>
