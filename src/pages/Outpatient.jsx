@@ -8,6 +8,7 @@ import {
   fetchHospitals, fetchTeamMembers, fetchMembersWithPositions, closeVisit, bookAppointment,
   addVisitNote, fetchAllPatientVisitNotes, fetchTeamServices,
   addVisitService, deleteVisitService, ALL_TIME_SLOTS, fmtSlot, updatePatientContact,
+  fetchTeamProfile, fetchUserName,
 } from '../lib/api'
 import { sendAppointmentConfirmationSafe } from '../lib/email'
 import LogVisitModal from '../components/LogVisitModal'
@@ -114,13 +115,21 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked, not
       // silent Resend/deploy failure is visible instead of vanishing.
       const emailTo = (patient?.email || bookingEmail || '').trim()
       if (emailTo) {
-        sendAppointmentConfirmationSafe({
+        const hosp = hospitals.find(h => h.id === selectedHospitalId)
+        Promise.all([
+          fetchTeamProfile(teamId).catch(() => null),
+          visit.doctor_id ? fetchUserName(visit.doctor_id).catch(() => null) : Promise.resolve(null),
+        ]).then(([team, doctor]) => sendAppointmentConfirmationSafe({
           to: emailTo,
           patientName,
           dateStr: date,
           timeLabel: fmtSlot(selectedSlot),
-          hospitalName: hospitals.find(h => h.id === selectedHospitalId)?.name,
-        }).then(res => {
+          hospitalName: hosp?.name,
+          hospitalAddress: hosp?.address,
+          doctorName: doctor?.full_name,
+          doctorTitle: doctor?.job_title || doctor?.speciality,
+          team,
+        })).then(res => {
           if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
           else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
         })

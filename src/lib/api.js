@@ -848,8 +848,21 @@ export async function fetchTeamDetails(teamId) {
 export async function fetchTeamProfile(teamId) {
   const { data, error } = await supabase
     .from('teams')
-    .select('id, practice_name, doctor_name, doctor_title, address, phone, email, logo_url')
+    .select('id, name, practice_name, doctor_name, doctor_title, address, phone, email, practice_phone, practice_email, logo_url')
     .eq('id', teamId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// Minimal name/title lookup for a single user (e.g. the treating doctor on an
+// appointment), used to enrich appointment emails with the doctor's name.
+export async function fetchUserName(userId) {
+  if (!userId) return null
+  const { data, error } = await supabase
+    .from('users')
+    .select('full_name, job_title, speciality')
+    .eq('id', userId)
     .maybeSingle()
   if (error) throw error
   return data
@@ -1389,7 +1402,7 @@ export async function inviteTeamMember(teamId, email, role, fullName, password, 
 export async function fetchScheduleForDate(teamId, doctorId, date) {
   const { data, error } = await supabase
     .from('outpatient_visits')
-    .select('*, patients(id, first_name, last_name, date_of_birth), hospitals(id, name, color)')
+    .select('*, patients(id, first_name, last_name, date_of_birth, email, phone), hospitals(id, name, color, address)')
     .eq('team_id', teamId)
     .eq('doctor_id', doctorId)
     .eq('visit_date', date)

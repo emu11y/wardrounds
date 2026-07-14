@@ -13,6 +13,7 @@ import { GLASS_CARD } from '../lib/theme'
 import { todayStr } from '../lib/utils'
 import TopHeader from '../components/TopHeader'
 import NewVisitModal from '../components/NewVisitModal'
+import ReminderComposeModal from '../components/ReminderComposeModal'
 import ModalShell from '../components/ModalShell'
 import TagScanDropzone from '../components/TagScanDropzone'
 import DoctorPicker from '../components/DoctorPicker'
@@ -169,7 +170,7 @@ function BlockRangeModal({ onClose, onBlocked }) {
 
 // ─── Booked Slot Popover ──────────────────────────────────────────────────────
 
-function BookedSlotModal({ visit, onClose, onCancelBooking, onChangeBooking, onCheckIn }) {
+function BookedSlotModal({ visit, onClose, onCancelBooking, onChangeBooking, onCheckIn, onSendReminder }) {
   const [checkInError, setCheckInError] = useState(null)
   const [checkingIn, setCheckingIn] = useState(false)
   const [doctorId, setDoctorId] = useState('')
@@ -218,6 +219,12 @@ function BookedSlotModal({ visit, onClose, onCancelBooking, onChangeBooking, onC
             className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
           >
             Change Booking
+          </button>
+          <button
+            onClick={() => onSendReminder(visit)}
+            className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+          >
+            Send Reminder
           </button>
           <button
             onClick={() => onCancelBooking(visit)}
@@ -280,6 +287,7 @@ export default function MyAppointments() {
   const [showRangeModal, setShowRangeModal] = useState(false)
   const [bookingSlot, setBookingSlot] = useState(null)     // { time, status } for NewVisitModal
   const [bookedSlotVisit, setBookedSlotVisit] = useState(null)
+  const [reminderVisit, setReminderVisit] = useState(null)
   const [blockReasonSlot, setBlockReasonSlot] = useState(null) // slot pending a reason
   const [blockReason, setBlockReason] = useState('')
   const [adhocBookings, setAdhocBookings] = useState([])
@@ -879,6 +887,16 @@ export default function MyAppointments() {
           onCheckIn={handleCheckIn}
           onCancelBooking={handleCancelBooking}
           onChangeBooking={handleChangeBooking}
+          onSendReminder={(visit) => { setBookedSlotVisit(null); setReminderVisit(visit) }}
+        />
+      )}
+
+      {/* Manual reminder compose modal */}
+      {reminderVisit && (
+        <ReminderComposeModal
+          visit={reminderVisit}
+          onClose={() => setReminderVisit(null)}
+          notify={showToast}
         />
       )}
 

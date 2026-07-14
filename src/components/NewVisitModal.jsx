@@ -3,7 +3,7 @@ import { X, Search, UserPlus, ScanLine, ChevronDown, ChevronUp } from 'lucide-re
 import { useAuth } from '../context/AuthContext'
 import PatientSearch from './PatientSearch'
 import { extractPatientDataFromTag, matchHospitalFromScan, fileToScaledBase64 } from '../lib/hospitalTagReader'
-import { createOutpatientVisit, createPatient, findPatientByHospitalId, fetchScheduleForDate, ALL_TIME_SLOTS, updatePatientContact, fmtSlot, slotKeyFromVisit } from '../lib/api'
+import { createOutpatientVisit, createPatient, findPatientByHospitalId, fetchScheduleForDate, ALL_TIME_SLOTS, updatePatientContact, fmtSlot, slotKeyFromVisit, fetchTeamProfile, fetchUserName } from '../lib/api'
 import { sendAppointmentConfirmationSafe } from '../lib/email'
 import { logActivity } from '../lib/activityLog'
 import { todayStr } from '../lib/utils'
@@ -219,13 +219,21 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
       // silent Resend/deploy failure surfaces instead of vanishing.
       const emailTo = (selectedPatient?.email || newPatientEmail || bookingEmail || '').trim()
       if (emailTo) {
-        sendAppointmentConfirmationSafe({
+        const hosp = hospitals.find(h => h.id === hospitalId)
+        Promise.all([
+          fetchTeamProfile(user.team_id).catch(() => null),
+          doctorId ? fetchUserName(doctorId).catch(() => null) : Promise.resolve(null),
+        ]).then(([team, doctor]) => sendAppointmentConfirmationSafe({
           to: emailTo,
           patientName,
           dateStr: effectiveDate,
           timeLabel: fmtSlot(effectiveSlot),
-          hospitalName: hospitals.find(h => h.id === hospitalId)?.name,
-        }).then(res => {
+          hospitalName: hosp?.name,
+          hospitalAddress: hosp?.address,
+          doctorName: doctor?.full_name,
+          doctorTitle: doctor?.job_title || doctor?.speciality,
+          team,
+        })).then(res => {
           if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
           else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
         })
