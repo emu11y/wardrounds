@@ -15,3 +15,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/scan-tag/deno.json"
 entrypoint = "./functions/scan-tag/index.ts"
+
+[functions.send-reminders]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-reminders/deno.json"
+entrypoint = "./functions/send-reminders/index.ts"

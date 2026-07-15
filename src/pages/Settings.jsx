@@ -139,7 +139,7 @@ export default function Settings() {
   const [expandedHospitalId, setExpandedHospitalId] = useState(null)
   const [hospitalWards, setHospitalWards] = useState({})
 
-  const EMPTY_PRACTICE = { practice_name: '', doctor_name: '', doctor_title: 'Attending Physician', address: '', phone: '', email: '', logo_url: '' }
+  const EMPTY_PRACTICE = { practice_name: '', doctor_name: '', doctor_title: 'Attending Physician', address: '', phone: '', email: '', logo_url: '', reminders_enabled: true }
   const [practiceForm, setPracticeForm] = useState(EMPTY_PRACTICE)
   const [savingPractice, setSavingPractice] = useState(false)
   const [practiceSaved, setPracticeSaved] = useState(false)
@@ -658,6 +658,7 @@ export default function Settings() {
           phone:         data.phone         || '',
           email:         data.email         || '',
           logo_url:      data.logo_url      || '',
+          reminders_enabled: data.reminders_enabled !== false,
         })
       }
     } catch { /* columns may not exist yet — silently ignore */ }
@@ -675,6 +676,7 @@ export default function Settings() {
         phone:         practiceForm.phone.trim(),
         email:         practiceForm.email.trim(),
         logo_url:      practiceForm.logo_url.trim(),
+        reminders_enabled: practiceForm.reminders_enabled,
       })
       setPracticeSaved(true)
       setTimeout(() => setPracticeSaved(false), 3000)
@@ -1043,6 +1045,38 @@ export default function Settings() {
               className="hidden"
               onChange={handleLogoUpload}
             />
+          </div>
+        </div>
+
+        {/* Automatic appointment reminders — team-level gate for the send-reminders
+            cron. Off = no scheduled 1-week / 1-day / day-of emails go out. Manual
+            "Send Reminder" on Appointments is unaffected. */}
+        <div className="mt-6 pt-5 border-t border-gray-100">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <label htmlFor="reminders-enabled" className="block text-sm font-medium text-slate-700">
+                Automatic appointment reminders
+              </label>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Email patients a branded reminder 1 week before, the day before, and the morning of their appointment.
+              </p>
+            </div>
+            <button
+              id="reminders-enabled"
+              type="button"
+              role="switch"
+              aria-checked={practiceForm.reminders_enabled}
+              onClick={() => setPracticeForm(f => ({ ...f, reminders_enabled: !f.reminders_enabled }))}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#007AFF]/40 ${
+                practiceForm.reminders_enabled ? 'bg-ios-blue' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  practiceForm.reminders_enabled ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
           </div>
         </div>
 
