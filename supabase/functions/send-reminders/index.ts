@@ -70,11 +70,11 @@ interface EmbeddedVisit {
 }
 
 // deno-lint-ignore no-explicit-any
-async function sendViaResend(apiKey: string, from: string, to: string, subject: string, html: string): Promise<{ ok: boolean; detail?: any }> {
+async function sendViaResend(apiKey: string, from: string, to: string, subject: string, html: string, text?: string): Promise<{ ok: boolean; detail?: any }> {
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject, html }),
+    body: JSON.stringify({ from, to, subject, html, ...(text ? { text } : {}) }),
   });
   const result = await resp.json().catch(() => ({}));
   return resp.ok ? { ok: true } : { ok: false, detail: result };
@@ -142,7 +142,7 @@ export default {
           ? `${v.patients.first_name || ""} ${v.patients.last_name || ""}`.trim()
           : "";
 
-        const { subject, html } = buildAppointmentEmail({
+        const { subject, html, text } = buildAppointmentEmail({
           kind: win.kind,
           patientName: name,
           dateStr: v.visit_date,
@@ -154,7 +154,7 @@ export default {
           team: v.teams,
         });
 
-        const res = await sendViaResend(RESEND_API_KEY, FROM, email, subject, html);
+        const res = await sendViaResend(RESEND_API_KEY, FROM, email, subject, html, text);
         if (!res.ok) {
           stat.failed++;
           console.error(`send failed (${win.kind}, ${v.id}):`, JSON.stringify(res.detail));

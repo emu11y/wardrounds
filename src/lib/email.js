@@ -98,6 +98,24 @@ export function brandedLayout({ team, heading, greeting, rows = [], infoNote, ma
   </div>`
 }
 
+// ── Plain-text mirror of brandedLayout ───────────────────────────────────────
+// A proper text/plain alternative for the multipart email. Without it, Resend
+// synthesises one from the HTML and the row table collapses into a run-on
+// ("DateThursday 16 July 2026Time2:30 PM…"). Values here are RAW (not HTML-
+// escaped, no markup) — `rows` are plain [label, value] pairs.
+export function plainTextLayout({ team, heading, greeting, rows = [], infoNote, marketing }) {
+  const clinicName = team?.practice_name || team?.name || 'WardRounds'
+  const contactBits = [team?.phone || team?.practice_phone, team?.email || team?.practice_email]
+    .filter(Boolean).join(' · ')
+
+  const lines = [clinicName, '', heading, '', greeting, '']
+  rows.filter(r => r && r[1]).forEach(([label, value]) => lines.push(`${label}: ${value}`))
+  if (infoNote) lines.push('', infoNote)
+  if (contactBits) lines.push('', `Questions? Contact us: ${contactBits}`)
+  if (marketing) lines.push('', marketing)
+  return lines.join('\n')
+}
+
 // Per-type copy. `intro` is a function of the patient's name.
 const APPT_COPY = {
   confirmation: {
@@ -162,15 +180,23 @@ export function buildAppointmentEmail({
     ['Location', locationCell(hospitalName, hospitalAddress)],
   ]
 
-  const html = brandedLayout({
-    team,
-    heading: copy.heading,
-    greeting: greetingOverride || copy.intro(patientName),
-    rows,
-    infoNote: copy.info,
-    marketing,
-  })
-  return { subject, html }
+  // Plain-text rows mirror the HTML but carry raw (unescaped, unmarked) values.
+  const doctorPlain = doctorName
+    ? `${doctorName}${doctorTitle ? `, ${doctorTitle}` : ''}`
+    : ''
+  const locationPlain = [hospitalName, hospitalAddress].filter(Boolean).join(', ')
+  const plainRows = [
+    ['Date', dateLabel],
+    timeLabel ? ['Time', timeLabel] : null,
+    doctorPlain ? ['Doctor', doctorPlain] : null,
+    locationPlain ? ['Location', locationPlain] : null,
+  ]
+
+  const greeting = greetingOverride || copy.intro(patientName)
+  const layoutArgs = { team, heading: copy.heading, greeting, infoNote: copy.info, marketing }
+  const html = brandedLayout({ ...layoutArgs, rows })
+  const text = plainTextLayout({ ...layoutArgs, rows: plainRows })
+  return { subject, html, text }
 }
 
 // Back-compat wrapper — existing callers still pass { patientName, dateStr,
@@ -195,8 +221,8 @@ export async function sendAppointmentEmailSafe({ to, kind = 'confirmation', ...r
   const recipient = (to || '').trim()
   if (!recipient) return { ok: false, skipped: true }
   try {
-    const { subject, html } = buildAppointmentEmail({ kind, ...rest })
-    await sendEmail({ to: recipient, subject, html })
+    const { subject, html, text } = buildAppointmentEmail({ kind, ...rest })
+    await sendEmail({ to: recipient, subject, html, text })
     return { ok: true }
   } catch (e) {
     const error = e?.message || String(e)

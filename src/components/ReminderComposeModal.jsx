@@ -60,7 +60,7 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
     if (!email) { setError('This patient has no email on file.'); return }
     setSending(true); setError(null)
     try {
-      const { subject: builtSubject, html } = buildAppointmentEmail({
+      const { subject: builtSubject, html, text } = buildAppointmentEmail({
         kind: preset,
         patientName: name,
         dateStr: visit.visit_date,
@@ -73,7 +73,7 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
         subjectOverride: subject.trim() || undefined,
         greetingOverride: message.trim() || undefined,
       })
-      await sendEmail({ to: email, subject: builtSubject, html })
+      await sendEmail({ to: email, subject: builtSubject, html, text })
       notify?.(`Reminder sent to ${email}`, 'success')
       onClose()
     } catch (e) {

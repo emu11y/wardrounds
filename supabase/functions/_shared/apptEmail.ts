@@ -122,6 +122,32 @@ export function brandedLayout(
   </div>`;
 }
 
+// ── Plain-text mirror of brandedLayout ───────────────────────────────────────
+// A proper text/plain alternative for the multipart email. Without it, Resend
+// synthesises one from the HTML and the row table collapses into a run-on
+// ("DateThursday 16 July 2026Time2:30 PM…"). Values here are RAW (not HTML-
+// escaped, no markup) — `rows` are plain [label, value] pairs.
+export function plainTextLayout(
+  { team, heading, greeting, rows = [], infoNote, marketing }: BrandedLayoutArgs,
+): string {
+  const clinicName = team?.practice_name || team?.name || "WardRounds";
+  const contactBits = [
+    team?.phone || team?.practice_phone,
+    team?.email || team?.practice_email,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const lines = [clinicName, "", heading, "", greeting, ""];
+  rows
+    .filter((r): r is readonly [string, string] => !!r && !!r[1])
+    .forEach(([label, value]) => lines.push(`${label}: ${value}`));
+  if (infoNote) lines.push("", infoNote);
+  if (contactBits) lines.push("", `Questions? Contact us: ${contactBits}`);
+  if (marketing) lines.push("", marketing);
+  return lines.join("\n");
+}
+
 interface ApptCopy {
   subjectPrefix: string;
   heading: string;
@@ -196,7 +222,7 @@ export function buildAppointmentEmail({
   marketing,
   subjectOverride,
   greetingOverride,
-}: BuildApptEmailArgs): { subject: string; html: string } {
+}: BuildApptEmailArgs): { subject: string; html: string; text: string } {
   const copy = APPT_COPY[kind] || APPT_COPY.confirmation;
   const dateLabel = fmtDate(dateStr);
   const subject = subjectOverride ||
@@ -213,13 +239,21 @@ export function buildAppointmentEmail({
     ["Location", locationCell(hospitalName, hospitalAddress)],
   ];
 
-  const html = brandedLayout({
-    team,
-    heading: copy.heading,
-    greeting: greetingOverride || copy.intro(patientName),
-    rows,
-    infoNote: copy.info,
-    marketing,
-  });
-  return { subject, html };
+  // Plain-text rows mirror the HTML but carry raw (unescaped, unmarked) values.
+  const doctorPlain = doctorName
+    ? `${doctorName}${doctorTitle ? `, ${doctorTitle}` : ""}`
+    : "";
+  const locationPlain = [hospitalName, hospitalAddress].filter(Boolean).join(", ");
+  const plainRows: (readonly [string, string] | null)[] = [
+    ["Date", dateLabel],
+    timeLabel ? ["Time", timeLabel] : null,
+    doctorPlain ? ["Doctor", doctorPlain] : null,
+    locationPlain ? ["Location", locationPlain] : null,
+  ];
+
+  const greeting = greetingOverride || copy.intro(patientName);
+  const layoutArgs = { team, heading: copy.heading, greeting, infoNote: copy.info, marketing };
+  const html = brandedLayout({ ...layoutArgs, rows });
+  const text = plainTextLayout({ ...layoutArgs, rows: plainRows });
+  return { subject, html, text };
 }
