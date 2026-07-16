@@ -2,8 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Wallet, Building2, Activity, Lock, Check, X, Download, FileSpreadsheet,
   Stethoscope, ArrowRight, ArrowUp, Bell, TrendingUp, FileCheck, Plus, Users, Pencil,
+  Clock, ChevronDown, CalendarDays, BedDouble, BarChart2, Settings as SettingsIcon,
 } from 'lucide-react'
 import AuthModal from './AuthModal'
+// Framer-free mock primitives shared with the desktop landing (PatientCard and
+// MockCardHeader are NOT imported — they use framer-motion; replicated statically below).
+import MacBookFrame from './mock/MacBookFrame'
+import MockSectionPanel from './mock/MockSectionPanel'
+import MockIconTile from './mock/MockIconTile'
+import { darken } from './mock/colors'
 
 // Graphical mobile landing — same content as the desktop landing, scaled down.
 // Deliberately imports NO framer-motion and NO Lenis (the two things that made the
@@ -43,10 +50,26 @@ const STEPS = [
   { number: '4', title: 'Reconcile', body: "Match your totals to each hospital's — and get paid in full." },
 ]
 
-const TIMELINE_SEGMENTS = [
-  { ward: 'ICU', days: '3 days', amount: 'KES 60,000', color: '#FF3B30' },
-  { ward: 'HDU', days: '2 days', amount: 'KES 30,000', color: '#FF9500' },
-  { ward: 'General Ward', days: '4 days', amount: 'KES 32,000', color: '#007AFF' },
+// Mirrors mock/PatientCard.jsx ENTRIES — keep in sync with the desktop mock.
+const TIMELINE_ENTRIES = [
+  { label: 'Admitted to ICU · 12 Jun', sub: '3d · KES 20,000/day', dot: '#ef4444', current: false },
+  { label: 'Transferred to HDU · 15 Jun', sub: '2d · KES 15,000/day', dot: '#f97316', current: false },
+  { label: 'Transferred to General Ward · 17 Jun', sub: '4d · KES 8,000/day', dot: '#22c55e', current: true },
+]
+
+// Mirrors mock/DashboardMock.jsx STAT_CHIPS.
+const STAT_CHIPS = [
+  { name: 'ALL HOSPITALS', count: 20, bg: 'rgba(0,122,255,0.12)', border: 'rgba(0,122,255,0.3)' },
+  { name: 'NAIROBI HOSP.', count: 12, bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.3)' },
+  { name: 'AGA KHAN', count: 8, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
+]
+
+const SIDEBAR_ICONS = [
+  { icon: BedDouble, active: true },
+  { icon: Stethoscope, active: false },
+  { icon: Users, active: false },
+  { icon: BarChart2, active: false },
+  { icon: SettingsIcon, active: false },
 ]
 
 const INVOICE_LINES = [
@@ -272,42 +295,195 @@ function NumbersBackdrop() {
   )
 }
 
+// Static replica of mock/MockCardHeader.jsx (which uses framer-motion) — keep the
+// markup byte-parallel with the original so the mocks stay true to the real app.
+function AppCardHeader({ accentColor = '#007AFF', initials, name, patientNumber, ageDob, formattedTotal }) {
+  return (
+    <div
+      className="pt-3 pb-2 px-4"
+      style={{ background: `linear-gradient(135deg, ${accentColor} 0%, ${darken(accentColor, 45)} 100%)` }}
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-white/25 flex items-center justify-center">
+          <span className="text-white font-semibold text-sm">{initials}</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-white truncate leading-tight uppercase">{name}</p>
+          <p className="text-white/70 text-xs mt-0.5">{patientNumber}</p>
+        </div>
+      </div>
+      <div className="mt-1.5 flex justify-end">
+        <div className="text-right">
+          <p className="text-white/70 text-xs">Total (Live)</p>
+          <p className="text-lg font-bold text-white tabular-nums">{formattedTotal}</p>
+        </div>
+      </div>
+      <div className="mt-1.5 pb-2 flex items-center justify-end text-white/80 text-xs">
+        <div className="flex items-center gap-1">
+          <CalendarDays size={11} className="text-white/70 flex-shrink-0" />
+          <span>{ageDob}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Static replica of mock/PatientCard.jsx — the real app's patient card, settled.
 function TimelineMock() {
+  const accent = '#007AFF'
   return (
     <PhoneShell>
-      <div className="p-3 pt-10">
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#8B5CF6]/15 text-xs font-bold text-[#8B5CF6]">
-              AH
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-gray-900">Amina Hassan</p>
-              <p className="text-[10px] text-gray-500">#31904472 · Nairobi Hospital</p>
-            </div>
-            <span className="flex-shrink-0 rounded-full bg-[#007AFF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#007AFF]">
-              General Ward
-            </span>
-          </div>
+      <div className="bg-ios-gray-6 p-3 pt-10">
+        <div
+          className="rounded-3xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.08)] ring-2 ring-white/60"
+          style={{ backgroundColor: accent + '08' }}
+        >
+          <AppCardHeader
+            accentColor={accent}
+            initials="AB"
+            name="Abraham Bayusuf"
+            patientNumber="#24963483"
+            ageDob="41 yrs · 6 Jun 1985"
+            formattedTotal="KES 122,000"
+          />
 
-          <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-3">
-            {TIMELINE_SEGMENTS.map((seg, i) => (
-              <Reveal key={seg.ward} delay={i * 140} className="flex items-center gap-2.5 rounded-xl bg-gray-50 px-3 py-2">
-                <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: seg.color }} />
-                <span className="flex-1 truncate text-xs font-semibold text-gray-800">{seg.ward}</span>
-                <span className="text-[10px] text-gray-500">{seg.days}</span>
-                <span className="text-xs font-semibold tabular-nums text-gray-800">{seg.amount}</span>
-              </Reveal>
-            ))}
-          </div>
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <MockIconTile accentColor={accent} icon={Building2} />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-gray-900 text-sm truncate">General Ward</p>
+                <p className="text-gray-500 text-xs truncate">M.P. Shah Hospital</p>
+              </div>
+            </div>
 
-          <Reveal delay={480} className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
-            <span className="text-xs font-bold text-gray-500">Running total</span>
-            <span className="text-sm font-bold tabular-nums text-[#007AFF]">KES 122,000</span>
-          </Reveal>
+            <MockSectionPanel accentColor={accent}>
+              <div className="flex items-center gap-2 w-full p-4">
+                <Clock size={13} style={{ color: accent }} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-wide flex-1" style={{ color: accent }}>
+                  STAY TIMELINE
+                </span>
+                <Pencil size={13} style={{ color: accent }} />
+                <ChevronDown size={13} className="rotate-180" style={{ color: accent }} />
+              </div>
+
+              <div className="px-4 pb-4 border-t border-white/30">
+                {TIMELINE_ENTRIES.map((entry, i) => (
+                  <Reveal key={entry.label} delay={i * 140} className="flex gap-3 pt-3">
+                    <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                      <div className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white" style={{ backgroundColor: entry.dot }} />
+                      <div className="w-px flex-1 bg-ios-gray-4 mt-1" style={{ minHeight: '2rem' }} />
+                    </div>
+                    <div className="flex-1 pb-2">
+                      <p className="text-[12px] font-semibold text-gray-800 leading-tight">{entry.label}</p>
+                      <p className="text-[11px] text-ios-gray-1 mt-0.5">
+                        {entry.sub}
+                        {entry.current && <span className="ml-1.5 text-ios-green font-medium">(current)</span>}
+                      </p>
+                    </div>
+                  </Reveal>
+                ))}
+                <Reveal delay={480} className="flex gap-3 pt-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-ios-green animate-pulse flex-shrink-0 mt-0.5" />
+                  <p className="text-[12px] font-semibold text-ios-green">Active · 9 days total</p>
+                </Reveal>
+              </div>
+            </MockSectionPanel>
+          </div>
         </div>
       </div>
     </PhoneShell>
+  )
+}
+
+// Compact static replica of mock/DashboardMock.jsx — the desktop app, scaled down.
+function MiniDashboardMock() {
+  return (
+    <MacBookFrame>
+      <div className="flex bg-ios-gray-6">
+        {/* Icon-only glass sidebar (compact form of the app's sidebar) */}
+        <div className="flex w-10 flex-shrink-0 flex-col items-center gap-1.5 border-r border-white/30 bg-white/70 p-1.5">
+          <div
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, #007AFF, #5856D6)' }}
+          >
+            W
+          </div>
+          {SIDEBAR_ICONS.map(({ icon: Icon, active }, i) => (
+            <div
+              key={i}
+              className={`flex h-6 w-6 items-center justify-center rounded-lg ${active ? 'bg-[#007AFF] text-white' : 'text-gray-500'}`}
+            >
+              <Icon size={13} />
+            </div>
+          ))}
+        </div>
+
+        <div className="min-w-0 flex-1 space-y-2 p-2">
+          {/* Hospital Overview band — mirrors the app's dashboard header */}
+          <div className="rounded-2xl bg-gradient-to-r from-[#1a237e] to-[#1565c0] p-2.5">
+            <div className="flex items-center gap-2">
+              <div
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
+                style={{ background: 'linear-gradient(135deg, #007AFF, #5856D6)' }}
+              >
+                W
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-white">WardRounds</p>
+                <p className="text-[8px] text-blue-200">Hospital Overview</p>
+              </div>
+            </div>
+            <div className="mt-2 flex gap-1.5">
+              {STAT_CHIPS.map(chip => (
+                <div
+                  key={chip.name}
+                  className="relative min-w-0 flex-1 overflow-hidden rounded-xl border p-1.5"
+                  style={{ backgroundColor: chip.bg, borderColor: chip.border }}
+                >
+                  <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br from-white/35 via-white/8 to-transparent" />
+                  <p className="relative truncate text-[7px] font-bold uppercase tracking-wide text-white">{chip.name}</p>
+                  <p className="relative mt-0.5 text-xs font-bold text-white">
+                    {chip.count} <span className="text-[7px] font-normal text-white/70">patients</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Patient grid — compact cards (header + ward row) */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { accent: '#007AFF', initials: 'WK', name: 'Wanjiku Kamau', number: '#11482956', total: 'KES 84,000', ageDob: '34 yrs · 12 Mar 1992', ward: 'ICU', hospital: 'M.P. Shah Hospital' },
+              { accent: '#F59E0B', initials: 'DO', name: 'David Ochieng', number: '#20871134', total: 'KES 32,000', ageDob: '58 yrs · 3 Nov 1967', ward: 'General Ward', hospital: 'Aga Khan Hospital' },
+            ].map(p => (
+              <div
+                key={p.name}
+                className="rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.08)] ring-2 ring-white/60"
+                style={{ backgroundColor: p.accent + '08', zoom: 0.62 }}
+              >
+                <AppCardHeader
+                  accentColor={p.accent}
+                  initials={p.initials}
+                  name={p.name}
+                  patientNumber={p.number}
+                  ageDob={p.ageDob}
+                  formattedTotal={p.total}
+                />
+                <div className="p-3">
+                  <div className="flex items-center gap-2.5">
+                    <MockIconTile accentColor={p.accent} icon={Building2} size={14} />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-900 text-xs truncate">{p.ward}</p>
+                      <p className="text-gray-500 text-[10px] truncate">{p.hospital}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </MacBookFrame>
   )
 }
 
@@ -363,107 +539,139 @@ function InvoiceMock() {
   )
 }
 
+// Mirrors the desktop SettingsScene (mock/MockSectionPanel glass panels on ios-gray).
 function SettingsMock() {
+  const accent = '#007AFF'
   return (
     <PhoneShell>
-      <div className="space-y-2.5 p-3 pt-10">
-        <div className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-gray-200">
-          <div className="flex items-center gap-1.5">
-            <Building2 size={12} className="flex-shrink-0 text-[#007AFF]" />
-            <span className="text-[10px] font-bold tracking-wide text-[#007AFF]">HOSPITALS</span>
+      <div className="space-y-2.5 bg-ios-gray-6 p-3 pt-10">
+        <MockSectionPanel accentColor={accent}>
+          <div className="flex items-center gap-2 p-3.5">
+            <Building2 size={13} style={{ color: accent }} className="flex-shrink-0" />
+            <span className="text-xs font-bold tracking-wide flex-1" style={{ color: accent }}>HOSPITALS</span>
           </div>
-          <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-gray-900">
-            <span className="h-2 w-2 flex-shrink-0 rounded-full bg-[#007AFF]" />
-            M.P. Shah Hospital
-          </p>
-          <div className="mt-1.5 space-y-1">
+          <div className="px-3.5 pb-3.5 pt-1 border-t border-white/30">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: accent }} />
+              <p className="truncate text-sm font-bold text-gray-900">M.P. Shah Hospital</p>
+            </div>
             {RATES.map((rate, i) => (
-              <Reveal key={rate.label} delay={i * 120} className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-1.5">
-                <span className="flex-1 truncate text-[11px] text-gray-800">{rate.label}</span>
-                <span className="text-[11px] font-medium tabular-nums text-gray-700">{rate.amount}</span>
-                <Pencil size={10} className="flex-shrink-0 text-gray-300" />
+              <Reveal key={rate.label} delay={i * 120} className="mb-1 flex items-center gap-2 rounded-xl border border-gray-100 bg-white/60 px-3 py-2">
+                <span className="flex-1 truncate text-xs text-gray-800">{rate.label}</span>
+                <span className="flex-shrink-0 text-xs font-medium tabular-nums text-gray-700">{rate.amount}</span>
+                <Pencil size={11} className="flex-shrink-0 text-gray-300" />
               </Reveal>
             ))}
           </div>
-        </div>
+        </MockSectionPanel>
 
-        <div className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-gray-200">
-          <div className="flex items-center gap-1.5">
-            <Users size={12} className="flex-shrink-0 text-[#007AFF]" />
-            <span className="flex-1 text-[10px] font-bold tracking-wide text-[#007AFF]">TEAM</span>
-            <Reveal delay={600} className="flex items-center gap-0.5 rounded-full bg-[#007AFF] px-2 py-0.5 text-[9px] font-semibold text-white">
-              <Plus size={9} />
+        <MockSectionPanel accentColor={accent}>
+          <div className="flex items-center gap-2 p-3.5">
+            <Users size={13} style={{ color: accent }} className="flex-shrink-0" />
+            <span className="text-xs font-bold tracking-wide flex-1" style={{ color: accent }}>TEAM</span>
+            <Reveal delay={600} className="flex flex-shrink-0 items-center gap-1 rounded-full bg-[#007AFF] px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm">
+              <Plus size={10} />
               Add
             </Reveal>
           </div>
-          <div className="mt-2 space-y-2">
+          <div className="space-y-2 border-t border-white/30 px-3.5 pb-3.5 pt-2">
             {TEAM.map((member, i) => (
-              <Reveal key={member.name} delay={200 + i * 140} className="flex items-center gap-2">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#007AFF]/10 text-[9px] font-semibold text-[#007AFF]">
+              <Reveal key={member.name} delay={200 + i * 140} className="flex items-center gap-3">
+                <span
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-white shadow-sm"
+                  style={{ backgroundColor: accent + '20', color: accent }}
+                >
                   {member.initials}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-semibold text-gray-900">{member.name}</p>
-                  <p className="truncate text-[9px] text-gray-500">{member.position}</p>
+                  <p className="truncate text-xs font-semibold text-gray-900">{member.name}</p>
+                  <p className="truncate text-[10px] text-gray-500">{member.position}</p>
                 </div>
-                <span className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-semibold ${member.admin ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                  {member.admin ? 'Admin' : 'Member'}
+                <span className={`flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${member.admin ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {member.admin ? 'Administrator' : 'Member'}
                 </span>
               </Reveal>
             ))}
           </div>
-        </div>
+        </MockSectionPanel>
       </div>
     </PhoneShell>
   )
 }
 
+// Mirrors the desktop ExportVisual — the app's Patients page in a laptop frame,
+// light ios-gray chrome with the glass sidebar, plus the exported-file chip.
 function ExportMock() {
   return (
-    <div className="relative mx-auto w-full max-w-[340px]">
-      <Glow className="-inset-8" color="rgba(52,199,89,0.12)" />
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900 p-3 shadow-2xl shadow-black/40">
-        <div className="mb-2 flex items-center justify-between px-0.5">
-          <p className="text-[10px] text-slate-400">{EXPORT_ROWS.length} patients</p>
-          <span className="flex items-center gap-1 rounded-lg bg-[#007AFF] px-2 py-1 text-[9px] font-semibold text-white">
-            <Download size={9} />
-            Export
-          </span>
-        </div>
-        <div className="overflow-hidden rounded-lg border border-white/10">
-          <div className="grid grid-cols-[1.4fr_1fr_0.9fr_0.9fr] bg-[#007AFF] text-[8px] font-semibold uppercase tracking-wide text-white">
-            {['Patient', 'Hospital', 'Ward', 'Amount'].map(h => (
-              <div key={h} className="truncate border-r border-white/20 px-1.5 py-1 last:border-r-0">{h}</div>
-            ))}
+    <MacBookFrame>
+      <div className="flex gap-2 bg-ios-gray-6 p-2.5">
+        {/* Icon-only glass sidebar */}
+        <div className="flex w-9 flex-shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-white/30 bg-white/70 p-1.5 shadow-ios-card">
+          <div
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, #007AFF, #5856D6)' }}
+          >
+            W
           </div>
-          {EXPORT_ROWS.map((row, i) => (
-            <Reveal
-              key={row.name}
-              delay={i * 110}
-              className={`grid grid-cols-[1.4fr_1fr_0.9fr_0.9fr] text-[9px] text-gray-700 ${i % 2 ? 'bg-gray-50' : 'bg-white'}`}
+          {SIDEBAR_ICONS.map(({ icon: Icon }, i) => (
+            <div
+              key={i}
+              className={`flex h-6 w-6 items-center justify-center rounded-lg ${i === 2 ? 'bg-[#007AFF] text-white' : 'text-gray-500'}`}
             >
-              <div className="truncate border-r border-gray-100 px-1.5 py-1.5">{row.name}</div>
-              <div className="truncate border-r border-gray-100 px-1.5 py-1.5">{row.hospital}</div>
-              <div className="truncate border-r border-gray-100 px-1.5 py-1.5">{row.ward}</div>
-              <div className="truncate px-1.5 py-1.5 tabular-nums">{row.amount}</div>
-            </Reveal>
+              <Icon size={13} />
+            </div>
           ))}
         </div>
 
-        <Reveal delay={520} className="relative -mt-1 ml-auto flex w-fit translate-y-2 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-lg shadow-black/30">
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500">
-            <FileSpreadsheet size={14} className="text-white" strokeWidth={2} />
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[10px] font-semibold text-gray-900">Ward_Rounds_June.xlsx</span>
-            <span className="block text-[9px] text-emerald-600">Exported</span>
-          </span>
-          <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500">
-            <Check size={9} className="text-white" strokeWidth={3} />
-          </span>
-        </Reveal>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5">
+            <p className="text-xs font-bold leading-tight text-gray-900">Patients</p>
+            <p className="text-[9px] leading-tight text-gray-500">Dr. A. Mwangi</p>
+          </div>
+
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="text-[9px] text-gray-500">{EXPORT_ROWS.length} patients</p>
+            <span className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-[#007AFF] px-2 py-1 text-[9px] font-semibold text-white">
+              <Download size={9} />
+              Export
+            </span>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div className="grid grid-cols-[1.4fr_1fr_0.9fr_0.9fr] bg-[#007AFF] text-[7px] font-semibold uppercase tracking-wide text-white">
+              {['Patient', 'Hospital', 'Ward', 'Amount'].map(h => (
+                <div key={h} className="truncate border-r border-white/20 px-1.5 py-1 last:border-r-0">{h}</div>
+              ))}
+            </div>
+            {EXPORT_ROWS.map((row, i) => (
+              <Reveal
+                key={row.name}
+                delay={i * 110}
+                className={`grid grid-cols-[1.4fr_1fr_0.9fr_0.9fr] text-[8px] text-gray-700 ${i % 2 ? 'bg-gray-50' : 'bg-white'}`}
+              >
+                <div className="truncate border-r border-gray-100 px-1.5 py-1.5">{row.name}</div>
+                <div className="truncate border-r border-gray-100 px-1.5 py-1.5">{row.hospital}</div>
+                <div className="truncate border-r border-gray-100 px-1.5 py-1.5">{row.ward}</div>
+                <div className="truncate px-1.5 py-1.5 tabular-nums">{row.amount}</div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal delay={520} className="relative ml-auto mt-2 flex w-fit items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 shadow-sm">
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500">
+              <FileSpreadsheet size={12} className="text-white" strokeWidth={2} />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[9px] font-semibold text-gray-900">Ward_Rounds_June.xlsx</span>
+              <span className="block text-[8px] text-emerald-600">Exported</span>
+            </span>
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500">
+              <Check size={9} className="text-white" strokeWidth={3} />
+            </span>
+          </Reveal>
+        </div>
       </div>
-    </div>
+    </MacBookFrame>
   )
 }
 
@@ -628,6 +836,10 @@ export default function MobileLanding() {
             captured at the bedside the moment it happens. At month-end, you reconcile against the
             hospital's statement in minutes, not evenings — and nothing you did goes unpaid.
           </p>
+        </Reveal>
+
+        <Reveal delay={120} className="mt-8">
+          <MiniDashboardMock />
         </Reveal>
 
         <div className="mt-8">
