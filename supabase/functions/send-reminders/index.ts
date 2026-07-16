@@ -10,12 +10,15 @@ import type { ApptKind } from "../_shared/apptEmail.ts";
 // (1 week / 1 day / day-of, Africa/Nairobi), then stamps the matching
 // reminder_*_sent_at so it never double-sends.
 //
-// Gating: withSupabase auth ["secret"] — the caller must present the project's
-// service-role (secret) key. The pg_cron job sends it as the Bearer token.
-// Optional defence-in-depth: if the CRON_SECRET env var is set, the request
-// must also carry a matching `x-cron-secret` header.
+// Gating: a shared CRON_SECRET (env var) is the real authorization gate and is
+// REQUIRED — the request must carry a matching `x-cron-secret` header, or it is
+// rejected (fails closed). withSupabase auth ["publishable","secret"] only gets
+// the request through the platform gateway (matching the other functions); it
+// is NOT the security boundary, because the publishable key is public. The
+// pg_cron job passes the publishable key (apikey) + the CRON_SECRET header.
 //
-// Required secrets (already present on TEST + PROD): RESEND_API_KEY, RESEND_FROM.
+// Required secrets: CRON_SECRET (new — set on TEST + PROD), plus the existing
+// RESEND_API_KEY, RESEND_FROM.
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -78,14 +81,15 @@ async function sendViaResend(apiKey: string, from: string, to: string, subject: 
 }
 
 export default {
-  fetch: withSupabase({ auth: ["secret"] }, async (req, ctx) => {
+  fetch: withSupabase({ auth: ["publishable", "secret"] }, async (req, ctx) => {
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: CORS });
     }
 
-    // Optional shared-secret defence-in-depth.
+    // Real authorization gate — REQUIRED shared secret. Fails closed if the env
+    // var is unset or the header doesn't match.
     const cronSecret = Deno.env.get("CRON_SECRET");
-    if (cronSecret && req.headers.get("x-cron-secret") !== cronSecret) {
+    if (!cronSecret || req.headers.get("x-cron-secret") !== cronSecret) {
       return Response.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
     }
 
