@@ -31,12 +31,13 @@ const Landing        = lazy(() => import('./pages/landing/Landing'))
 const MobileLanding  = lazy(() => import('./pages/landing/MobileLanding'))
 
 // Decided once at load: touch / coarse-pointer devices (phones, tablets) get the
-// lightweight static MobileLanding; desktop keeps the animated Landing. Branching
-// here means mobile never even downloads the heavy Landing chunk (framer-motion +
-// Lenis + showcase mocks).
+// lightweight MobileLanding; desktop keeps the animated Landing. Branching here
+// means mobile never even downloads the heavy Landing chunk (framer-motion +
+// Lenis + showcase mocks). `?mobile=1` forces MobileLanding on desktop for review.
 const IS_TOUCH_DEVICE =
   typeof window !== 'undefined' &&
-  window.matchMedia('(hover: none), (pointer: coarse)').matches
+  (window.matchMedia('(hover: none), (pointer: coarse)').matches ||
+    new URLSearchParams(window.location.search).has('mobile'))
 
 function RouteFallback() {
   return (

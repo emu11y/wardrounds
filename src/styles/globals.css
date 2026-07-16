@@ -203,3 +203,24 @@
   from { transform: translateY(0); }
   to   { transform: translateY(-50%); }
 }
+
+/* Mobile landing — CSS-only scroll reveals + bar growth (deliberately no
+   framer-motion on phones; opacity/transform only, triggered once by a single
+   IntersectionObserver in MobileLanding.jsx adding .wr-in). */
+.wr-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s ease-out, transform 0.55s ease-out;
+}
+.wr-reveal.wr-in { opacity: 1; transform: translateY(0); }
+.wr-bar { transform: scaleY(0); transform-origin: bottom; }
+.wr-in .wr-bar { animation: wr-grow-y 0.7s ease-out forwards; }
+@keyframes wr-grow-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wr-reveal { opacity: 1; transform: none; transition: none; }
+  .wr-bar { transform: none; }
+  .wr-in .wr-bar { animation: none; }
+}
