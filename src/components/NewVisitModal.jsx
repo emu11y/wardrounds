@@ -5,6 +5,7 @@ import PatientSearch from './PatientSearch'
 import { extractPatientDataFromTag, matchHospitalFromScan, fileToScaledBase64 } from '../lib/hospitalTagReader'
 import { createOutpatientVisit, createPatient, findPatientByHospitalId, fetchScheduleForDate, ALL_TIME_SLOTS, updatePatientContact, fmtSlot, slotKeyFromVisit, fetchTeamProfile, fetchUserName } from '../lib/api'
 import { sendAppointmentConfirmationSafe } from '../lib/email'
+import { sendAppointmentWhatsAppSafe } from '../lib/whatsapp'
 import { logActivity } from '../lib/activityLog'
 import { todayStr } from '../lib/utils'
 import ModalShell from './ModalShell'
@@ -83,6 +84,9 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
   const [newPatientEmail, setNewPatientEmail] = useState('')
 
   const [bookingPhone, setBookingPhone] = useState('')
+  // WhatsApp consent — Meta policy requires explicit patient opt-in before any
+  // WhatsApp message; applies to whichever phone path (new patient / booking) is active.
+  const [waOptIn, setWaOptIn] = useState(false)
   const [bookingEmail, setBookingEmail] = useState('')
 
   const [loading, setLoading] = useState(false)
@@ -104,6 +108,7 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
     setNewPatientEmail('')
     setBookingPhone('')
     setBookingEmail('')
+    setWaOptIn(false)
     setError(null)
     setInternalSlot('')
     setScanPreview(null)
@@ -189,6 +194,7 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
             date_of_birth: selectedPatient.date_of_birth || null,
             phone:         newPatientPhone || null,
             email:         newPatientEmail || null,
+            whatsapp_opt_in: !!(newPatientPhone && waOptIn),
             team_id:       user.team_id,
           })
           patientId = p.id
@@ -208,34 +214,55 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
         doctor_id:           doctorId,
         patient_hospital_id: scannedHospitalId || selectedPatient.patient_hospital_id || null,
       })
-      if (selectedPatient.id && (bookingPhone.trim() || bookingEmail.trim())) {
+      if (selectedPatient.id && (bookingPhone.trim() || bookingEmail.trim() || (waOptIn && !selectedPatient.whatsapp_opt_in))) {
         const contact = {}
         if (bookingPhone.trim()) contact.phone = bookingPhone.trim()
         if (bookingEmail.trim()) contact.email = bookingEmail.trim()
+        if (waOptIn && !selectedPatient.whatsapp_opt_in) contact.whatsapp_opt_in = true
         await updatePatientContact(selectedPatient.id, contact)
       }
 
-      // Appointment confirmation email — non-blocking, but report the outcome so a
-      // silent Resend/deploy failure surfaces instead of vanishing.
+      // Appointment confirmations — non-blocking, both channels fire independently
+      // (email + WhatsApp when the team toggle, patient opt-in and phone all allow),
+      // and each reports its outcome so silent failures surface.
       const emailTo = (selectedPatient?.email || newPatientEmail || bookingEmail || '').trim()
-      if (emailTo) {
+      const waPhone = (selectedPatient?.phone || newPatientPhone || bookingPhone || '').trim()
+      const waConsent = selectedPatient?.whatsapp_opt_in === true || waOptIn
+      if (emailTo || (waPhone && waConsent)) {
         const hosp = hospitals.find(h => h.id === hospitalId)
         Promise.all([
           fetchTeamProfile(user.team_id).catch(() => null),
           doctorId ? fetchUserName(doctorId).catch(() => null) : Promise.resolve(null),
-        ]).then(([team, doctor]) => sendAppointmentConfirmationSafe({
-          to: emailTo,
-          patientName,
-          dateStr: effectiveDate,
-          timeLabel: fmtSlot(effectiveSlot),
-          hospitalName: hosp?.name,
-          hospitalAddress: hosp?.address,
-          doctorName: doctor?.full_name,
-          doctorTitle: doctor?.job_title || doctor?.speciality,
-          team,
-        })).then(res => {
-          if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
-          else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
+        ]).then(([team, doctor]) => {
+          const appt = {
+            dateStr: effectiveDate,
+            timeLabel: fmtSlot(effectiveSlot),
+            hospitalName: hosp?.name,
+            hospitalAddress: hosp?.address,
+            doctorName: doctor?.full_name,
+            doctorTitle: doctor?.job_title || doctor?.speciality,
+            team,
+          }
+          if (emailTo) {
+            sendAppointmentConfirmationSafe({ to: emailTo, patientName, ...appt }).then(res => {
+              if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
+              else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
+            })
+          }
+          if (waPhone && waConsent && team?.whatsapp_enabled === true) {
+            sendAppointmentWhatsAppSafe({
+              phone: waPhone,
+              optIn: true,
+              kind: 'confirmation',
+              patientId,
+              visitId: visit?.id,
+              patientFirstName: selectedPatient?.first_name || patientName?.split(' ')[0],
+              ...appt,
+            }).then(res => {
+              if (res.ok) notify?.('WhatsApp confirmation sent', 'success')
+              else if (!res.skipped) notify?.(`WhatsApp not sent: ${res.error}`, 'error')
+            })
+          }
         })
       }
       await logActivity({
@@ -368,6 +395,17 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
                       onChange={e => setNewPatientPhone(e.target.value)}
                       className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
                     />
+                    {newPatientPhone.trim() && (
+                      <label className="mt-1.5 flex items-start gap-2 text-xs text-gray-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={waOptIn}
+                          onChange={e => setWaOptIn(e.target.checked)}
+                          className="mt-0.5 accent-[#007AFF]"
+                        />
+                        <span>Patient agrees to receive appointment messages on <span className="font-medium">WhatsApp</span></span>
+                      </label>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -567,6 +605,17 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
                     onChange={e => setBookingPhone(e.target.value)}
                     className="w-full px-3 py-1.5 text-sm rounded-xl border border-blue-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
                   />
+                  {bookingPhone.trim() && (
+                    <label className="mt-1.5 flex items-start gap-2 text-xs text-blue-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={waOptIn}
+                        onChange={e => setWaOptIn(e.target.checked)}
+                        className="mt-0.5 accent-[#007AFF]"
+                      />
+                      <span>Patient agrees to receive appointment messages on <span className="font-medium">WhatsApp</span></span>
+                    </label>
+                  )}
                   <p className="text-[10px] text-blue-400 mt-1">Skip to book without — you can add it later from the Patients list.</p>
                 </div>
               )}
@@ -575,6 +624,20 @@ export default function NewVisitModal({ open, onClose, hospitals, onVisitCreated
                   <p className="text-xs text-gray-500">
                     📱 SMS reminders will be sent to <span className="font-semibold text-gray-700">{selectedPatient.phone}</span>
                   </p>
+                  {!selectedPatient.whatsapp_opt_in && (
+                    <label className="mt-1.5 flex items-start gap-2 text-xs text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={waOptIn}
+                        onChange={e => setWaOptIn(e.target.checked)}
+                        className="mt-0.5 accent-[#007AFF]"
+                      />
+                      <span>Patient agrees to receive appointment messages on <span className="font-medium">WhatsApp</span></span>
+                    </label>
+                  )}
+                  {selectedPatient.whatsapp_opt_in && (
+                    <p className="text-[10px] text-green-600 mt-1">✓ Opted in to WhatsApp messages</p>
+                  )}
                 </div>
               )}
 

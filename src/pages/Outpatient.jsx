@@ -11,6 +11,7 @@ import {
   fetchTeamProfile, fetchUserName,
 } from '../lib/api'
 import { sendAppointmentConfirmationSafe } from '../lib/email'
+import { sendAppointmentWhatsAppSafe } from '../lib/whatsapp'
 import LogVisitModal from '../components/LogVisitModal'
 import TopHeader from '../components/TopHeader'
 import ModalShell from '../components/ModalShell'
@@ -111,27 +112,47 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked, not
         await updatePatientContact(patient.id, { email: bookingEmail.trim() })
           .catch(err => console.error('Booking saved, but email could not be stored', err))
       }
-      // Appointment confirmation email — non-blocking, but surface the outcome so a
-      // silent Resend/deploy failure is visible instead of vanishing.
+      // Appointment confirmations — non-blocking, both channels fire independently
+      // (email + WhatsApp when the team toggle, patient opt-in and phone all allow),
+      // each surfacing its outcome so silent failures are visible.
       const emailTo = (patient?.email || bookingEmail || '').trim()
-      if (emailTo) {
+      const waPhone = (patient?.phone || '').trim()
+      const waConsent = patient?.whatsapp_opt_in === true
+      if (emailTo || (waPhone && waConsent)) {
         const hosp = hospitals.find(h => h.id === selectedHospitalId)
         Promise.all([
           fetchTeamProfile(teamId).catch(() => null),
           visit.doctor_id ? fetchUserName(visit.doctor_id).catch(() => null) : Promise.resolve(null),
-        ]).then(([team, doctor]) => sendAppointmentConfirmationSafe({
-          to: emailTo,
-          patientName,
-          dateStr: date,
-          timeLabel: fmtSlot(selectedSlot),
-          hospitalName: hosp?.name,
-          hospitalAddress: hosp?.address,
-          doctorName: doctor?.full_name,
-          doctorTitle: doctor?.job_title || doctor?.speciality,
-          team,
-        })).then(res => {
-          if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
-          else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
+        ]).then(([team, doctor]) => {
+          const apptFields = {
+            dateStr: date,
+            timeLabel: fmtSlot(selectedSlot),
+            hospitalName: hosp?.name,
+            hospitalAddress: hosp?.address,
+            doctorName: doctor?.full_name,
+            doctorTitle: doctor?.job_title || doctor?.speciality,
+            team,
+          }
+          if (emailTo) {
+            sendAppointmentConfirmationSafe({ to: emailTo, patientName, ...apptFields }).then(res => {
+              if (res.ok) notify?.(`Confirmation email sent to ${emailTo}`, 'success')
+              else if (!res.skipped) notify?.(`Email not sent: ${res.error}`, 'error')
+            })
+          }
+          if (waPhone && waConsent && team?.whatsapp_enabled === true) {
+            sendAppointmentWhatsAppSafe({
+              phone: waPhone,
+              optIn: true,
+              kind: 'confirmation',
+              patientId: visit.patient_id,
+              visitId: appt?.id,
+              patientFirstName: patient?.first_name || patientName?.split(' ')[0],
+              ...apptFields,
+            }).then(res => {
+              if (res.ok) notify?.('WhatsApp confirmation sent', 'success')
+              else if (!res.skipped) notify?.(`WhatsApp not sent: ${res.error}`, 'error')
+            })
+          }
         })
       }
       // Grey out the confirmed slot immediately

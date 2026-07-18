@@ -78,10 +78,11 @@ export async function updatePatient(id, updates) {
   return data
 }
 
-export async function updatePatientContact(patientId, { email, phone }) {
+export async function updatePatientContact(patientId, { email, phone, whatsapp_opt_in }) {
   const updates = {}
   if (email !== undefined) updates.email = email || null
   if (phone !== undefined) updates.phone = phone || null
+  if (whatsapp_opt_in !== undefined) updates.whatsapp_opt_in = whatsapp_opt_in === true
   const { error } = await supabase
     .from('patients')
     .update(updates)
@@ -848,7 +849,7 @@ export async function fetchTeamDetails(teamId) {
 export async function fetchTeamProfile(teamId) {
   const { data, error } = await supabase
     .from('teams')
-    .select('id, name, practice_name, doctor_name, doctor_title, address, phone, email, practice_phone, practice_email, logo_url')
+    .select('id, name, practice_name, doctor_name, doctor_title, address, phone, email, practice_phone, practice_email, logo_url, reminders_enabled, whatsapp_enabled')
     .eq('id', teamId)
     .maybeSingle()
   if (error) throw error

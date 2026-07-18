@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import ModalShell from './ModalShell'
 import { fetchTeamProfile, fetchUserName, fmtSlot, slotKeyFromVisit } from '../lib/api'
 import { buildAppointmentEmail, sendEmail } from '../lib/email'
+import { sendAppointmentWhatsAppSafe, toE164Kenya } from '../lib/whatsapp'
 
 // Manual appointment reminder — a glass compose modal. The user picks a reminder
 // tone (which pre-fills a subject + message), can freely edit both, then sends.
@@ -43,12 +44,26 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
   const [sending, setSending] = useState(false)
   const [error, setError]     = useState(null)
 
+  // Channel selection. WhatsApp requires: valid Kenyan number + patient opt-in +
+  // the team's WhatsApp toggle (checked again server-side by send-whatsapp).
+  const waNumber  = toE164Kenya(patient?.phone)
+  const waAllowed = !!waNumber && patient?.whatsapp_opt_in === true && team?.whatsapp_enabled === true
+  const [viaEmail, setViaEmail] = useState(!!email)
+  const [viaWa, setViaWa]       = useState(false)
+
   useEffect(() => {
     let alive = true
-    fetchTeamProfile(visit.team_id).then(t => { if (alive) setTeam(t) }).catch(() => {})
+    fetchTeamProfile(visit.team_id).then(t => {
+      if (!alive) return
+      setTeam(t)
+      // Pre-tick WhatsApp once we know the team allows it and the patient can get it.
+      if (t?.whatsapp_enabled === true && patient?.whatsapp_opt_in === true && toE164Kenya(patient?.phone)) {
+        setViaWa(true)
+      }
+    }).catch(() => {})
     if (visit.doctor_id) fetchUserName(visit.doctor_id).then(d => { if (alive) setDoctor(d) }).catch(() => {})
     return () => { alive = false }
-  }, [visit])
+  }, [visit, patient])
 
   function applyPreset(key) {
     setPreset(key)
@@ -57,24 +72,59 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
   }
 
   async function handleSend() {
-    if (!email) { setError('This patient has no email on file.'); return }
+    const wantEmail = viaEmail && !!email
+    const wantWa    = viaWa && waAllowed
+    if (!wantEmail && !wantWa) { setError('Pick at least one channel this patient can receive.'); return }
     setSending(true); setError(null)
+
+    const outcomes = []
     try {
-      const { subject: builtSubject, html, text } = buildAppointmentEmail({
-        kind: preset,
-        patientName: name,
-        dateStr: visit.visit_date,
-        timeLabel,
-        hospitalName: visit.hospitals?.name,
-        hospitalAddress: visit.hospitals?.address,
-        doctorName: doctor?.full_name,
-        doctorTitle: doctor?.job_title || doctor?.speciality,
-        team,
-        subjectOverride: subject.trim() || undefined,
-        greetingOverride: message.trim() || undefined,
-      })
-      await sendEmail({ to: email, subject: builtSubject, html, text })
-      notify?.(`Reminder sent to ${email}`, 'success')
+      if (wantEmail) {
+        const { subject: builtSubject, html, text } = buildAppointmentEmail({
+          kind: preset,
+          patientName: name,
+          dateStr: visit.visit_date,
+          timeLabel,
+          hospitalName: visit.hospitals?.name,
+          hospitalAddress: visit.hospitals?.address,
+          doctorName: doctor?.full_name,
+          doctorTitle: doctor?.job_title || doctor?.speciality,
+          team,
+          subjectOverride: subject.trim() || undefined,
+          greetingOverride: message.trim() || undefined,
+        })
+        try {
+          await sendEmail({ to: email, subject: builtSubject, html, text })
+          outcomes.push(`email → ${email}`)
+        } catch (e) {
+          throw new Error(`Email failed: ${e?.message || e}`)
+        }
+      }
+
+      if (wantWa) {
+        // WhatsApp is template-bound: the pre-approved appt_manual template carries
+        // the appointment details, with the message above included as a short note.
+        const res = await sendAppointmentWhatsAppSafe({
+          phone: patient?.phone,
+          optIn: true,
+          kind: 'manual',
+          staffNote: message.trim() || undefined,
+          patientId: patient?.id,
+          visitId: visit.id,
+          patientFirstName: patient?.first_name,
+          team,
+          dateStr: visit.visit_date,
+          timeLabel,
+          hospitalName: visit.hospitals?.name,
+          hospitalAddress: visit.hospitals?.address,
+          doctorName: doctor?.full_name,
+          doctorTitle: doctor?.job_title || doctor?.speciality,
+        })
+        if (res.ok) outcomes.push('WhatsApp')
+        else if (!res.skipped) throw new Error(`WhatsApp failed: ${res.error}${outcomes.length ? ` (${outcomes.join(', ')} did send)` : ''}`)
+      }
+
+      notify?.(`Reminder sent (${outcomes.join(', ')})`, 'success')
       onClose()
     } catch (e) {
       const msg = e?.message || String(e)
@@ -102,11 +152,42 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
           </div>
 
           <div className="px-5 pb-5 pt-2 space-y-3">
-            {!email && (
+            {!email && !waAllowed && (
               <p className="text-xs text-red-500">
-                This patient has no email on file. Add one from their profile first.
+                This patient has no email on file{waNumber ? ' and is not set up for WhatsApp' : ''}. Add contact details from their profile first.
               </p>
             )}
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Send via</label>
+              <div className="flex gap-3">
+                <label className={`flex items-center gap-1.5 text-xs ${email ? 'text-gray-700 cursor-pointer' : 'text-gray-300'}`}>
+                  <input
+                    type="checkbox"
+                    checked={viaEmail && !!email}
+                    disabled={!email}
+                    onChange={e => setViaEmail(e.target.checked)}
+                    className="accent-[#007AFF]"
+                  />
+                  Email{email ? '' : ' (none on file)'}
+                </label>
+                <label className={`flex items-center gap-1.5 text-xs ${waAllowed ? 'text-gray-700 cursor-pointer' : 'text-gray-300'}`}>
+                  <input
+                    type="checkbox"
+                    checked={viaWa && waAllowed}
+                    disabled={!waAllowed}
+                    onChange={e => setViaWa(e.target.checked)}
+                    className="accent-[#007AFF]"
+                  />
+                  WhatsApp{waAllowed ? '' : (!waNumber ? ' (no valid number)' : patient?.whatsapp_opt_in !== true ? ' (no opt-in)' : ' (off in Settings)')}
+                </label>
+              </div>
+              {viaWa && waAllowed && (
+                <p className="text-[11px] text-gray-400 mt-1">
+                  WhatsApp sends a fixed, pre-approved template with the appointment details — your message above is included as a short note. Patients can't reply on WhatsApp; the template tells them to contact the clinic directly.
+                </p>
+              )}
+            </div>
 
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Reminder type</label>
@@ -152,10 +233,14 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
 
             <button
               onClick={handleSend}
-              disabled={sending || !email}
+              disabled={sending || !((viaEmail && !!email) || (viaWa && waAllowed))}
               className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-ios-blue text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              {sending ? 'Sending…' : email ? `Send to ${email}` : 'No email on file'}
+              {sending
+                ? 'Sending…'
+                : (viaEmail && !!email) || (viaWa && waAllowed)
+                  ? `Send via ${[viaEmail && email ? 'email' : null, viaWa && waAllowed ? 'WhatsApp' : null].filter(Boolean).join(' + ')}`
+                  : 'No channel available'}
             </button>
             <button
               onClick={onClose}

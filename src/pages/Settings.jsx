@@ -139,7 +139,7 @@ export default function Settings() {
   const [expandedHospitalId, setExpandedHospitalId] = useState(null)
   const [hospitalWards, setHospitalWards] = useState({})
 
-  const EMPTY_PRACTICE = { practice_name: '', doctor_name: '', doctor_title: 'Attending Physician', address: '', phone: '', email: '', logo_url: '', reminders_enabled: true }
+  const EMPTY_PRACTICE = { practice_name: '', doctor_name: '', doctor_title: 'Attending Physician', address: '', phone: '', email: '', logo_url: '', reminders_enabled: true, whatsapp_enabled: false }
   const [practiceForm, setPracticeForm] = useState(EMPTY_PRACTICE)
   const [savingPractice, setSavingPractice] = useState(false)
   const [practiceSaved, setPracticeSaved] = useState(false)
@@ -659,6 +659,7 @@ export default function Settings() {
           email:         data.email         || '',
           logo_url:      data.logo_url      || '',
           reminders_enabled: data.reminders_enabled !== false,
+          whatsapp_enabled:  data.whatsapp_enabled === true,
         })
       }
     } catch { /* columns may not exist yet — silently ignore */ }
@@ -677,6 +678,7 @@ export default function Settings() {
         email:         practiceForm.email.trim(),
         logo_url:      practiceForm.logo_url.trim(),
         reminders_enabled: practiceForm.reminders_enabled,
+        whatsapp_enabled:  practiceForm.whatsapp_enabled,
       })
       setPracticeSaved(true)
       setTimeout(() => setPracticeSaved(false), 3000)
@@ -1074,6 +1076,38 @@ export default function Settings() {
               <span
                 className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
                   practiceForm.reminders_enabled ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* WhatsApp channel — team-level gate for BOTH the cron's WhatsApp branch
+            and browser-initiated sends (send-whatsapp verifies it server-side).
+            Off = email-only. Patients additionally need whatsapp_opt_in. */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <label htmlFor="whatsapp-enabled" className="block text-sm font-medium text-slate-700">
+                WhatsApp reminders
+              </label>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Also message patients on WhatsApp (reminders and booking confirmations) when they have a mobile number and have opted in. Sent alongside email, not instead of it.
+              </p>
+            </div>
+            <button
+              id="whatsapp-enabled"
+              type="button"
+              role="switch"
+              aria-checked={practiceForm.whatsapp_enabled}
+              onClick={() => setPracticeForm(f => ({ ...f, whatsapp_enabled: !f.whatsapp_enabled }))}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#007AFF]/40 ${
+                practiceForm.whatsapp_enabled ? 'bg-ios-blue' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  practiceForm.whatsapp_enabled ? 'translate-x-5' : 'translate-x-0.5'
                 }`}
               />
             </button>

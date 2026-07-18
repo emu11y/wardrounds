@@ -2,6 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { buildAppointmentEmail, fmtTimeLabel } from "../_shared/apptEmail.ts";
 import type { ApptKind } from "../_shared/apptEmail.ts";
+import { buildApptWaParams, sendWhatsAppTemplate, toE164Kenya, WA_TEMPLATES } from "../_shared/whatsapp.ts";
 
 // Automatic appointment reminders — invoked on a schedule (pg_cron + pg_net).
 //
@@ -41,22 +42,33 @@ function addDays(isoDate: string, days: number): string {
 interface Window {
   kind: ApptKind;
   sentCol: "reminder_1w_sent_at" | "reminder_1d_sent_at" | "reminder_dayof_sent_at";
+  waCol: "reminder_1w_wa_sent_at" | "reminder_1d_wa_sent_at" | "reminder_dayof_wa_sent_at";
   offsetDays: number;
 }
 
+// Per-channel idempotency: each window carries an email column AND a WhatsApp
+// column so one channel's success never suppresses the other's retry.
 const WINDOWS: Window[] = [
-  { kind: "reminder_1w", sentCol: "reminder_1w_sent_at", offsetDays: 7 },
-  { kind: "reminder_1d", sentCol: "reminder_1d_sent_at", offsetDays: 1 },
-  { kind: "reminder_dayof", sentCol: "reminder_dayof_sent_at", offsetDays: 0 },
+  { kind: "reminder_1w", sentCol: "reminder_1w_sent_at", waCol: "reminder_1w_wa_sent_at", offsetDays: 7 },
+  { kind: "reminder_1d", sentCol: "reminder_1d_sent_at", waCol: "reminder_1d_wa_sent_at", offsetDays: 1 },
+  { kind: "reminder_dayof", sentCol: "reminder_dayof_sent_at", waCol: "reminder_dayof_wa_sent_at", offsetDays: 0 },
 ];
 
 interface EmbeddedVisit {
   id: string;
   visit_date: string;
   visit_time: string | null;
-  patients: { email: string | null; first_name: string | null; last_name: string | null } | null;
+  patients: {
+    id: string | null;
+    email: string | null;
+    phone: string | null;
+    whatsapp_opt_in: boolean | null;
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
   hospitals: { name: string | null; address: string | null } | null;
   teams: {
+    id: string | null;
     name: string | null;
     practice_name: string | null;
     logo_url: string | null;
@@ -65,6 +77,7 @@ interface EmbeddedVisit {
     practice_phone: string | null;
     practice_email: string | null;
     reminders_enabled: boolean | null;
+    whatsapp_enabled: boolean | null;
   } | null;
   doctor: { full_name: string | null; job_title: string | null; speciality: string | null } | null;
 }
@@ -100,26 +113,31 @@ export default {
     }
 
     const today = nairobiToday();
-    const summary: Record<string, { due: number; sent: number; skipped: number; failed: number }> = {};
+    const summary: Record<
+      string,
+      { due: number; sent: number; skipped: number; failed: number; whatsapp: { due: number; sent: number; skipped: number; failed: number } }
+    > = {};
     const errors: { visitId: string; kind: string; error: string }[] = [];
 
     for (const win of WINDOWS) {
       const targetDate = addDays(today, win.offsetDays);
-      const stat = { due: 0, sent: 0, skipped: 0, failed: 0 };
+      const stat = { due: 0, sent: 0, skipped: 0, failed: 0, whatsapp: { due: 0, sent: 0, skipped: 0, failed: 0 } };
       summary[win.kind] = stat;
 
+      // Fetch visits where EITHER channel is still unsent — each branch below
+      // re-checks its own column so the other channel's state never matters.
       const { data, error } = await ctx.supabaseAdmin
         .from("outpatient_visits")
         .select(
-          `id, visit_date, visit_time, ${win.sentCol},
-           patients ( email, first_name, last_name ),
+          `id, visit_date, visit_time, ${win.sentCol}, ${win.waCol},
+           patients ( id, email, phone, whatsapp_opt_in, first_name, last_name ),
            hospitals ( name, address ),
-           teams ( name, practice_name, logo_url, phone, email, practice_phone, practice_email, reminders_enabled ),
+           teams ( id, name, practice_name, logo_url, phone, email, practice_phone, practice_email, reminders_enabled, whatsapp_enabled ),
            doctor:users!outpatient_visits_doctor_id_fkey ( full_name, job_title, speciality )`,
         )
         .eq("status", "scheduled")
         .eq("visit_date", targetDate)
-        .is(win.sentCol, null);
+        .or(`${win.sentCol}.is.null,${win.waCol}.is.null`);
 
       if (error) {
         console.error(`query failed (${win.kind}):`, JSON.stringify(error));
@@ -128,50 +146,111 @@ export default {
       }
 
       const visits = (data ?? []) as unknown as EmbeddedVisit[];
-      stat.due = visits.length;
 
       for (const v of visits) {
-        const email = (v.patients?.email || "").trim();
-        // Skip when the team has reminders off or the patient has no email.
-        if (v.teams?.reminders_enabled === false || !email) {
-          stat.skipped++;
-          continue;
-        }
-
+        // deno-lint-ignore no-explicit-any
+        const row = v as any;
         const name = v.patients
           ? `${v.patients.first_name || ""} ${v.patients.last_name || ""}`.trim()
           : "";
+        const timeLabel = fmtTimeLabel(v.visit_time);
 
-        const { subject, html, text } = buildAppointmentEmail({
-          kind: win.kind,
-          patientName: name,
-          dateStr: v.visit_date,
-          timeLabel: fmtTimeLabel(v.visit_time),
-          hospitalName: v.hospitals?.name,
-          hospitalAddress: v.hospitals?.address,
-          doctorName: v.doctor?.full_name,
-          doctorTitle: v.doctor?.job_title || v.doctor?.speciality,
-          team: v.teams,
-        });
+        // ── Email branch (unchanged logic, now gated on its own column) ──────
+        if (row[win.sentCol] == null) {
+          stat.due++;
+          const email = (v.patients?.email || "").trim();
+          if (v.teams?.reminders_enabled === false || !email) {
+            stat.skipped++;
+          } else {
+            const { subject, html, text } = buildAppointmentEmail({
+              kind: win.kind,
+              patientName: name,
+              dateStr: v.visit_date,
+              timeLabel,
+              hospitalName: v.hospitals?.name,
+              hospitalAddress: v.hospitals?.address,
+              doctorName: v.doctor?.full_name,
+              doctorTitle: v.doctor?.job_title || v.doctor?.speciality,
+              team: v.teams,
+            });
 
-        const res = await sendViaResend(RESEND_API_KEY, FROM, email, subject, html, text);
-        if (!res.ok) {
-          stat.failed++;
-          console.error(`send failed (${win.kind}, ${v.id}):`, JSON.stringify(res.detail));
-          errors.push({ visitId: v.id, kind: win.kind, error: JSON.stringify(res.detail) });
-          continue;
+            const res = await sendViaResend(RESEND_API_KEY, FROM, email, subject, html, text);
+            if (!res.ok) {
+              stat.failed++;
+              console.error(`send failed (${win.kind}, ${v.id}):`, JSON.stringify(res.detail));
+              errors.push({ visitId: v.id, kind: win.kind, error: JSON.stringify(res.detail) });
+            } else {
+              // Stamp only after a confirmed send so a failure is retried next run.
+              const { error: stampError } = await ctx.supabaseAdmin
+                .from("outpatient_visits")
+                .update({ [win.sentCol]: new Date().toISOString() })
+                .eq("id", v.id);
+              if (stampError) {
+                console.error(`stamp failed (${win.kind}, ${v.id}):`, JSON.stringify(stampError));
+                errors.push({ visitId: v.id, kind: win.kind, error: `stamp: ${stampError.message ?? String(stampError)}` });
+              }
+              stat.sent++;
+            }
+          }
         }
 
-        // Stamp only after a confirmed send so a failure is retried next run.
-        const { error: stampError } = await ctx.supabaseAdmin
-          .from("outpatient_visits")
-          .update({ [win.sentCol]: new Date().toISOString() })
-          .eq("id", v.id);
-        if (stampError) {
-          console.error(`stamp failed (${win.kind}, ${v.id}):`, JSON.stringify(stampError));
-          errors.push({ visitId: v.id, kind: win.kind, error: `stamp: ${stampError.message ?? String(stampError)}` });
+        // ── WhatsApp branch (independent idempotency + gates) ────────────────
+        if (row[win.waCol] == null) {
+          const waTo = toE164Kenya(v.patients?.phone);
+          const waEligible = v.teams?.whatsapp_enabled === true &&
+            v.patients?.whatsapp_opt_in === true && !!waTo;
+          if (!waEligible) {
+            // Not counted as due — team off / no opt-in / no valid number is the
+            // normal state for most visits, not a delivery problem.
+            continue;
+          }
+          stat.whatsapp.due++;
+
+          const template = WA_TEMPLATES[win.kind];
+          const params = buildApptWaParams({
+            patientFirstName: v.patients?.first_name,
+            team: v.teams,
+            dateStr: v.visit_date,
+            timeLabel,
+            doctorName: v.doctor?.full_name,
+            doctorTitle: v.doctor?.job_title || v.doctor?.speciality,
+            hospitalName: v.hospitals?.name,
+            hospitalAddress: v.hospitals?.address,
+          });
+
+          const waRes = await sendWhatsAppTemplate({ to: waTo!, template, params });
+
+          if (v.teams?.id) {
+            const { error: logError } = await ctx.supabaseAdmin.from("message_log").insert({
+              team_id: v.teams.id,
+              patient_id: v.patients?.id ?? null,
+              visit_id: v.id,
+              channel: "whatsapp",
+              template,
+              recipient: waTo,
+              status: waRes.ok ? "sent" : "failed",
+              provider_message_id: waRes.wamid,
+              error: waRes.ok ? null : (waRes.error ?? "unknown"),
+            });
+            if (logError) console.error(`message_log insert failed (${win.kind}, ${v.id}):`, JSON.stringify(logError));
+          }
+
+          if (!waRes.ok) {
+            stat.whatsapp.failed++;
+            console.error(`wa send failed (${win.kind}, ${v.id}):`, waRes.error);
+            errors.push({ visitId: v.id, kind: `${win.kind}_wa`, error: waRes.error ?? "unknown" });
+          } else {
+            const { error: waStampError } = await ctx.supabaseAdmin
+              .from("outpatient_visits")
+              .update({ [win.waCol]: new Date().toISOString() })
+              .eq("id", v.id);
+            if (waStampError) {
+              console.error(`wa stamp failed (${win.kind}, ${v.id}):`, JSON.stringify(waStampError));
+              errors.push({ visitId: v.id, kind: `${win.kind}_wa`, error: `stamp: ${waStampError.message ?? String(waStampError)}` });
+            }
+            stat.whatsapp.sent++;
+          }
         }
-        stat.sent++;
       }
     }
 
