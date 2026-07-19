@@ -31,7 +31,10 @@ export function toHM(d) {
 //   expandedGroups Set of group ids the user has expanded
 // Row types: 'visit' | 'blocked' | 'blockedGroup' | 'gap' | 'gapGroup' | 'adhoc'
 // Every row has a `start` ("HH:MM") used for hour labels, adhoc + now insertion.
-export function buildDayRows({ slotMap, adhocBookings = [], expandedGroups = new Set() }) {
+// windowStart/windowEnd ("HH:MM", inclusive) hide out-of-hours FREE slots only —
+// booked/blocked/adhoc events always render regardless of the working-hours window.
+export function buildDayRows({ slotMap, adhocBookings = [], expandedGroups = new Set(), windowStart = '00:00', windowEnd = '23:30' }) {
+  const inWindow = s => s >= windowStart && s <= windowEnd
   const rows = []
   let i = 0
   while (i < ALL_TIME_SLOTS.length) {
@@ -39,9 +42,10 @@ export function buildDayRows({ slotMap, adhocBookings = [], expandedGroups = new
     const v = slotMap[slot]
 
     if (!v) {
+      if (!inWindow(slot)) { i++; continue }
       const free = [slot]
       let j = i + 1
-      while (j < ALL_TIME_SLOTS.length && !slotMap[ALL_TIME_SLOTS[j]]) {
+      while (j < ALL_TIME_SLOTS.length && !slotMap[ALL_TIME_SLOTS[j]] && inWindow(ALL_TIME_SLOTS[j])) {
         free.push(ALL_TIME_SLOTS[j]); j++
       }
       const id = `gap-${slot}`
@@ -111,4 +115,92 @@ export function decorateRows(rows, nowHM = null) {
     out.splice(idx, 0, { type: 'now', id: 'now', start: nowHM })
   }
   return out
+}
+
+// ─── Date math (noon-anchor trick throughout — never midnight + toISOString) ──
+
+export function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+export function shiftMonth(dateStr, months) {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setDate(1)
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().split('T')[0]
+}
+
+// Monday-start week containing dateStr → array of 7 "YYYY-MM-DD"
+export function weekDates(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  const dow = (d.getDay() + 6) % 7
+  return Array.from({ length: 7 }, (_, i) => shiftDate(dateStr, i - dow))
+}
+
+// Month matrix for the month containing dateStr: array of Monday-start weeks,
+// each week an array of 7 { date, inMonth } cells.
+export function monthMatrix(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  const first = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+  const month = d.getMonth()
+  let cursor = weekDates(first)[0]
+  const weeks = []
+  do {
+    weeks.push(Array.from({ length: 7 }, (_, i) => {
+      const date = shiftDate(cursor, i)
+      return { date, inMonth: new Date(date + 'T12:00:00').getMonth() === month }
+    }))
+    cursor = shiftDate(cursor, 7)
+  } while (new Date(cursor + 'T12:00:00').getMonth() === month)
+  return weeks
+}
+
+export function monthBounds(dateStr) {
+  const weeks = monthMatrix(dateStr)
+  return { from: weeks[0][0].date, to: weeks[weeks.length - 1][6].date }
+}
+
+// e.g. "12 – 20 Jul 2026" (short) or "5 Sep 2026" for a single day
+export function fmtDateRange(fromStr, toStr) {
+  const f = new Date(fromStr + 'T12:00:00'), t = new Date(toStr + 'T12:00:00')
+  const opt = { day: 'numeric', month: 'short', year: 'numeric' }
+  if (fromStr === toStr) return f.toLocaleDateString('en-GB', opt)
+  if (f.getMonth() === t.getMonth() && f.getFullYear() === t.getFullYear()) {
+    return `${f.getDate()} – ${t.toLocaleDateString('en-GB', opt)}`
+  }
+  return `${f.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${t.toLocaleDateString('en-GB', opt)}`
+}
+
+// Group raw blocked slot rows (visit_date, visit_time, notes — sorted) into
+// ranges for the Blocked-dates rail card: consecutive dates sharing the same
+// reason merge; a single partial day keeps its time span.
+export function groupBlockedRanges(blockedSlots) {
+  const byDay = new Map()
+  for (const b of blockedSlots) {
+    const key = `${b.visit_date}|${b.notes || ''}`
+    if (!byDay.has(key)) byDay.set(key, { date: b.visit_date, notes: b.notes || 'Blocked', slots: [] })
+    const t = b.visit_time ? toHM(new Date(b.visit_time)) : null
+    if (t) byDay.get(key).slots.push(t)
+  }
+  const days = [...byDay.values()].sort((a, b) =>
+    a.date === b.date ? a.notes.localeCompare(b.notes) : a.date.localeCompare(b.date))
+  const ranges = []
+  for (const day of days) {
+    const last = ranges[ranges.length - 1]
+    if (last && last.notes === day.notes && shiftDate(last.to, 1) === day.date) {
+      last.to = day.date
+      last.partial = false
+    } else {
+      const fullDay = day.slots.length >= ALL_TIME_SLOTS.length
+      ranges.push({
+        from: day.date, to: day.date, notes: day.notes,
+        partial: !fullDay && day.slots.length > 0,
+        fromTime: day.slots[0] || null,
+        toTime: day.slots.length ? endOfSlot(day.slots[day.slots.length - 1]) : null,
+      })
+    }
+  }
+  return ranges
 }

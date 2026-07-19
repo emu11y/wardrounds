@@ -24,12 +24,43 @@ function patientName(p) {
   return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Patient' : 'Patient'
 }
 
+// Per-day working-hours window, persisted locally. A day defaults to the last
+// window the user chose anywhere (the "default" key) — surgeons with a 1 AM
+// list widen just that day; booked/blocked events outside the window still show.
+const HOURS_KEY = d => `wr-cal-hours::${d}`
+const HOURS_DEFAULT_KEY = 'wr-cal-hours::default'
+const FALLBACK_WINDOW = { start: '06:00', end: '21:30' }
+
+function loadWindow(date) {
+  try {
+    const own = localStorage.getItem(HOURS_KEY(date))
+    if (own) return JSON.parse(own)
+    const def = localStorage.getItem(HOURS_DEFAULT_KEY)
+    if (def) return JSON.parse(def)
+  } catch { /* corrupted storage → fallback */ }
+  return FALLBACK_WINDOW
+}
+
+function saveWindow(date, win) {
+  try {
+    localStorage.setItem(HOURS_KEY(date), JSON.stringify(win))
+    localStorage.setItem(HOURS_DEFAULT_KEY, JSON.stringify(win))
+  } catch { /* storage full/blocked → non-fatal */ }
+}
+
 export default function DayTimeline({
   date, isToday, loading, schedule, slotMap, adhocBookings,
   blockMode, rescheduling, onSlotClick, onRescheduleToSlot,
 }) {
   const [expanded, setExpanded] = useState(() => new Set())
   useEffect(() => { setExpanded(new Set()) }, [date])
+
+  const [win, setWin] = useState(() => loadWindow(date))
+  useEffect(() => { setWin(loadWindow(date)) }, [date])
+  function changeWindow(next) {
+    setWin(next)
+    saveWindow(date, next)
+  }
 
   const [nowHM, setNowHM] = useState(() => toHM(new Date()))
   useEffect(() => {
@@ -40,21 +71,25 @@ export default function DayTimeline({
 
   const rows = useMemo(
     () => decorateRows(
-      buildDayRows({ slotMap, adhocBookings, expandedGroups: expanded }),
+      buildDayRows({ slotMap, adhocBookings, expandedGroups: expanded, windowStart: win.start, windowEnd: win.end }),
       isToday ? nowHM : null,
     ),
-    [slotMap, adhocBookings, expanded, isToday, nowHM],
+    [slotMap, adhocBookings, expanded, isToday, nowHM, win],
   )
 
   function expand(id) {
     setExpanded(prev => new Set(prev).add(id))
   }
 
+  const windowSlots = ALL_TIME_SLOTS.filter(s => s >= win.start && s <= win.end)
+  const freeInWindow = windowSlots.filter(s => !slotMap[s]).length
+  const hiddenFree = ALL_TIME_SLOTS.filter(s => !slotMap[s]).length - freeInWindow
+
   const bookedVisits = schedule.filter(v => v.status !== 'blocked')
   const blockedCount = schedule.filter(v => v.status === 'blocked').length
   const confirmedCount = bookedVisits.filter(v => visitStatusKey(v) === 'confirmed').length
   const counts = [
-    { label: 'free', value: ALL_TIME_SLOTS.length - schedule.length, cls: 'text-green-600', dot: 'bg-green-400' },
+    { label: 'free', value: freeInWindow, cls: 'text-green-600', dot: 'bg-green-400' },
     ...(confirmedCount > 0
       ? [
           { label: "RSVP'd", value: confirmedCount, cls: 'text-green-600', dot: 'bg-green-400' },
@@ -69,7 +104,7 @@ export default function DayTimeline({
 
   return (
     <div className="border border-gray-200 rounded-2xl bg-white/70 p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <p className="text-sm font-semibold text-gray-800">Schedule</p>
         {!loading && (
           <div className="flex items-center gap-3">
@@ -79,6 +114,37 @@ export default function DayTimeline({
               </span>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Working-hours window (this day only; persisted) */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">Hours</span>
+        <select
+          value={win.start}
+          onChange={e => changeWindow({ start: e.target.value, end: e.target.value > win.end ? e.target.value : win.end })}
+          className="px-2 py-1 text-xs rounded-lg bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
+        >
+          {ALL_TIME_SLOTS.map(s => <option key={s} value={s}>{fmtSlot(s)}</option>)}
+        </select>
+        <span className="text-xs text-gray-400">–</span>
+        <select
+          value={win.end}
+          onChange={e => changeWindow({ start: win.start, end: e.target.value })}
+          className="px-2 py-1 text-xs rounded-lg bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
+        >
+          {ALL_TIME_SLOTS.filter(s => s >= win.start).map(s => <option key={s} value={s}>{fmtSlot(s)}</option>)}
+        </select>
+        <button
+          onClick={() => changeWindow({ start: '00:00', end: '23:30' })}
+          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+            win.start === '00:00' && win.end === '23:30' ? 'bg-[#007AFF] text-white' : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
+          }`}
+        >
+          24h
+        </button>
+        {hiddenFree > 0 && (
+          <span className="text-[10px] text-gray-400">{hiddenFree} off-hours free slots hidden</span>
         )}
       </div>
 

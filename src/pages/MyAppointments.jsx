@@ -1,26 +1,28 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Lock, X, Plus } from 'lucide-react'
+import { Lock, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchScheduleForDate, blockSlot, blockSlotRange, unblockSlot,
   cancelVisit, rescheduleVisit, fetchHospitals, checkInVisit,
-  fetchAdhocBookings, createAdhocBooking, deleteAdhocBooking, ALL_TIME_SLOTS,
-  updatePatientContact, fetchMembersWithPositions, fmtSlot, slotKeyFromVisit,
+  fetchAdhocBookings, fetchScheduleForRange, fetchMonthDensity, fetchBlockedSlots,
+  ALL_TIME_SLOTS, fetchMembersWithPositions, fmtSlot, slotKeyFromVisit,
 } from '../lib/api'
-import { extractPatientDataFromTag, matchHospitalFromScan, fileToScaledBase64 } from '../lib/hospitalTagReader'
-import { GLASS_CARD } from '../lib/theme'
 import { todayStr } from '../lib/utils'
 import TopHeader from '../components/TopHeader'
 import NewVisitModal from '../components/NewVisitModal'
 import ReminderComposeModal from '../components/ReminderComposeModal'
 import ModalShell from '../components/ModalShell'
-import TagScanDropzone from '../components/TagScanDropzone'
 import DoctorPicker from '../components/DoctorPicker'
-import PatientSearch from '../components/PatientSearch'
 import Toast from '../components/Toast'
 import CalendarHeader from '../components/calendar/CalendarHeader'
 import DayTimeline from '../components/calendar/DayTimeline'
+import WeekStrip from '../components/calendar/WeekStrip'
+import WeekGrid from '../components/calendar/WeekGrid'
+import MonthGrid from '../components/calendar/MonthGrid'
+import CalendarRail from '../components/calendar/CalendarRail'
+import PatientBookingSearch from '../components/calendar/PatientBookingSearch'
+import { shiftDate, shiftMonth, weekDates, monthBounds, groupBlockedRanges } from '../components/calendar/calendarUtils'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -294,19 +296,12 @@ export default function MyAppointments() {
   const [blockReason, setBlockReason] = useState('')
   const [adhocBookings, setAdhocBookings] = useState([])
 
-  // Inline adhoc booking form
-  const [showAdhocForm, setShowAdhocForm] = useState(false)
-  const [showAdhocScan, setShowAdhocScan] = useState(false)
-  const [adhocScanPreview, setAdhocScanPreview] = useState(null)
-  const [adhocIsScanning, setAdhocIsScanning]   = useState(false)
-  const [adhocScanError, setAdhocScanError]     = useState(null)
-  const [adhocFormPatient, setAdhocFormPatient] = useState(null)
-  const [adhocFormHospital, setAdhocFormHospital] = useState(null)
-  const [adhocFormTime, setAdhocFormTime] = useState('')
-  const [adhocFormDate, setAdhocFormDate] = useState(todayStr())
-  const [adhocFormNote, setAdhocFormNote] = useState('')
-  const [adhocFormSaving, setAdhocFormSaving] = useState(false)
-  const [bookingPhone, setBookingPhone] = useState('')
+  // View state: day (default) | week | month
+  const [view, setView] = useState('day')
+  const [weekSchedule, setWeekSchedule] = useState([])
+  const [weekLoading, setWeekLoading] = useState(false)
+  const [density, setDensity] = useState({})
+  const [blockedRanges, setBlockedRanges] = useState([])
 
   useEffect(() => {
     if (!user?.team_id) return
@@ -342,7 +337,42 @@ export default function MyAppointments() {
 
   useEffect(() => { loadSchedule() }, [loadSchedule])
 
-  useEffect(() => { setAdhocFormDate(date) }, [date])
+  // Week view data
+  useEffect(() => {
+    if (view !== 'week' || !user?.team_id || !selectedDoctorId) return
+    const days = weekDates(date)
+    setWeekLoading(true)
+    fetchScheduleForRange(user.team_id, selectedDoctorId, days[0], days[6])
+      .then(setWeekSchedule)
+      .catch(err => { console.error(err); showToast('Failed to load the week — please try again.') })
+      .finally(() => setWeekLoading(false))
+  }, [view, date, user?.team_id, selectedDoctorId, schedule]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Month density (Month view + MiniMonth/WeekStrip dots) — refreshed after day mutations too
+  useEffect(() => {
+    if (!user?.team_id || !selectedDoctorId) return
+    const { from, to } = monthBounds(date)
+    fetchMonthDensity(user.team_id, selectedDoctorId, from, to)
+      .then(rows => {
+        const map = {}
+        for (const r of rows) {
+          const e = map[r.visit_date] || (map[r.visit_date] = { booked: 0, blocked: 0, adhoc: 0 })
+          if (r.status === 'blocked') e.blocked++
+          else if (r.is_adhoc) e.adhoc++
+          else e.booked++
+        }
+        setDensity(map)
+      })
+      .catch(() => setDensity({}))
+  }, [date, user?.team_id, selectedDoctorId, schedule])
+
+  // Upcoming blocked ranges (rail card)
+  useEffect(() => {
+    if (!user?.team_id || !selectedDoctorId) return
+    fetchBlockedSlots(user.team_id, selectedDoctorId, todayStr())
+      .then(rows => setBlockedRanges(groupBlockedRanges(rows)))
+      .catch(() => setBlockedRanges([]))
+  }, [user?.team_id, selectedDoctorId, schedule])
 
   // When a prefill patient arrived via location state, open the booking modal once the
   // schedule finishes loading. Date + slot selection happens inside the modal.
@@ -353,20 +383,27 @@ export default function MyAppointments() {
     }
   }, [loading, pendingPrefillOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Adhoc rows live in `schedule` too (is_adhoc=true, arbitrary times) — keep
+  // them OFF the slot grid; they render inline via the adhocBookings fetch.
+  const gridSchedule = schedule.filter(v => !v.is_adhoc)
+
   // Map slot time → visit/block row
   const slotMap = {}
-  for (const v of schedule) {
+  for (const v of gridSchedule) {
     const key = slotKeyFromVisit(v)
     if (key) slotMap[key] = v
   }
 
-  function prevDay() {
-    const d = new Date(date); d.setDate(d.getDate() - 1)
-    setDate(d.toISOString().split('T')[0])
+  // View-aware navigation: day ±1, week ±7, month ±1 month
+  function goPrev() {
+    setDate(view === 'day' ? shiftDate(date, -1) : view === 'week' ? shiftDate(date, -7) : shiftMonth(date, -1))
   }
-  function nextDay() {
-    const d = new Date(date); d.setDate(d.getDate() + 1)
-    setDate(d.toISOString().split('T')[0])
+  function goNext() {
+    setDate(view === 'day' ? shiftDate(date, 1) : view === 'week' ? shiftDate(date, 7) : shiftMonth(date, 1))
+  }
+  function openDay(d) {
+    setDate(d)
+    setView('day')
   }
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', {
@@ -444,26 +481,6 @@ export default function MyAppointments() {
     }
   }
 
-  async function handleAdhocScanFile(file) {
-    if (!file) return
-    setAdhocScanError(null)
-    setAdhocScanPreview(URL.createObjectURL(file))
-    setAdhocIsScanning(true)
-    try {
-      const { base64, mediaType } = await fileToScaledBase64(file)
-      const extracted = await extractPatientDataFromTag(base64, hospitals, mediaType)
-      const { hospital: matchedHospital } = matchHospitalFromScan(extracted, hospitals)
-      if (matchedHospital) setAdhocFormHospital(matchedHospital)
-      setShowAdhocScan(false)
-      setAdhocScanPreview(null)
-      setAdhocScanError(null)
-    } catch (err) {
-      setAdhocScanError(err.message || 'Could not read tag — try a clearer photo.')
-    } finally {
-      setAdhocIsScanning(false)
-    }
-  }
-
   return (
     <div className="flex flex-col min-h-full">
       <TopHeader title="Appointments" />
@@ -526,258 +543,62 @@ export default function MyAppointments() {
             </div>
           </div>
 
-        {/* Calendar header: Today · arrows · date title · view pill */}
+        {/* "When is this patient booked?" search */}
+        <PatientBookingSearch teamId={user.team_id} onPickDate={openDay} />
+
+        {/* Calendar header: Today · arrows · view-aware title · Day/Week/Month pill */}
         <CalendarHeader
           date={date}
+          view={view}
           onDateChange={setDate}
-          onPrev={prevDay}
-          onNext={nextDay}
+          onViewChange={setView}
+          onPrev={goPrev}
+          onNext={goNext}
         />
 
-        {/* Day timeline (status-coloured cards, merged blocks, collapsed gaps) */}
-        <DayTimeline
-          date={date}
-          isToday={date === todayStr()}
-          loading={loading}
-          schedule={schedule}
-          slotMap={slotMap}
-          adhocBookings={adhocBookings}
-          blockMode={blockMode}
-          rescheduling={rescheduling}
-          onSlotClick={handleSlotClick}
-          onRescheduleToSlot={handleRescheduleToSlot}
-        />
+        {view === 'day' && (
+          <>
+            {/* Mobile week strip */}
+            <WeekStrip date={date} density={density} onSelectDate={setDate} />
 
-        {/* Other Bookings */}
-        <div className={`${GLASS_CARD} p-4 shadow-sm`}>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Other Bookings</p>
-              <p className="text-xs text-gray-400">{adhocBookings.length} booking{adhocBookings.length !== 1 ? 's' : ''}</p>
-            </div>
-            {!showAdhocForm && (
-              <button
-                onClick={() => setShowAdhocForm(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#007AFF] text-white hover:bg-[#0063cc] transition-colors"
-              >
-                <Plus size={13} />
-                Add Booking
-              </button>
-            )}
-          </div>
-
-          {adhocBookings.length === 0 && !showAdhocForm ? (
-            <p className="text-xs text-gray-400 text-center py-4">No other bookings for this day</p>
-          ) : (
-            <div className="space-y-2">
-              {adhocBookings.map(b => (
-                <div key={b.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">
-                      {b.patients?.first_name} {b.patients?.last_name}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {b.visit_time ? new Date(b.visit_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—'} · {b.hospitals?.name}
-                    </p>
-                    {b.notes && <p className="text-xs text-gray-400 truncate mt-0.5">{b.notes}</p>}
-                  </div>
-                  <button
-                    onClick={async () => {
-                      try { await deleteAdhocBooking(b.id); setAdhocBookings(prev => prev.filter(x => x.id !== b.id)) }
-                      catch (e) { console.error(e); showToast('Failed to remove the booking — please try again.') }
-                    }}
-                    className="ml-3 w-6 h-6 flex items-center justify-center rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-500 transition-colors flex-shrink-0"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Inline adhoc booking form */}
-          {showAdhocForm && (
-            <div className="flex flex-col gap-3 border-t border-gray-100 pt-3 mt-1">
-
-              {/* Scan Tag button */}
-              <button
-                onClick={() => setShowAdhocScan(s => !s)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#007AFF]/30 bg-[#007AFF]/[0.08] text-[#007AFF] text-sm font-medium w-full justify-center hover:bg-[#007AFF]/[0.15] transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75z" />
-                </svg>
-                {showAdhocScan ? 'Hide Scanner' : 'Scan Hospital Tag'}
-              </button>
-
-
-              {/* Patient */}
-              <div>
-                <p className="text-xs text-gray-500 font-medium mb-1.5">Patient</p>
-                {adhocFormPatient ? (
-                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-green-50 border border-green-100">
-                    <span className="text-sm font-semibold text-gray-800">
-                      {adhocFormPatient.first_name} {adhocFormPatient.last_name}
-                    </span>
-                    <button onClick={() => setAdhocFormPatient(null)} className="text-green-400 hover:text-green-600 ml-2">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <PatientSearch
-                    teamId={user.team_id}
-                    onSelect={p => setAdhocFormPatient(p)}
-                  />
-                )}
-              </div>
-
-              {/* Hospital */}
-              <div>
-                <p className="text-xs text-gray-500 font-medium mb-1.5">Hospital</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {hospitals.map(h => (
-                    <button
-                      key={h.id}
-                      onClick={() => setAdhocFormHospital(h)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-                        adhocFormHospital?.id === h.id
-                          ? 'bg-[#007AFF] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {h.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Date + Time */}
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={adhocFormDate}
-                  onChange={e => setAdhocFormDate(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
-                />
-                <input
-                  type="time"
-                  value={adhocFormTime}
-                  onChange={e => setAdhocFormTime(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+            <div className="flex flex-col lg:flex-row gap-4 items-start">
+              <div className="flex-1 min-w-0 w-full">
+                {/* Day timeline (status-coloured cards, merged blocks, collapsed gaps, hours filter) */}
+                <DayTimeline
+                  date={date}
+                  isToday={date === todayStr()}
+                  loading={loading}
+                  schedule={gridSchedule}
+                  slotMap={slotMap}
+                  adhocBookings={adhocBookings}
+                  blockMode={blockMode}
+                  rescheduling={rescheduling}
+                  onSlotClick={handleSlotClick}
+                  onRescheduleToSlot={handleRescheduleToSlot}
                 />
               </div>
-
-              {/* Note */}
-              <input
-                type="text"
-                placeholder="Reason for visit (optional)"
-                value={adhocFormNote}
-                onChange={e => setAdhocFormNote(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
-              />
-
-              {/* SMS phone prompt — only when patient has no phone on record */}
-              {adhocFormPatient && !adhocFormPatient.phone && (
-                <div className="p-3 rounded-2xl bg-blue-50/80 border border-blue-100">
-                  <p className="text-xs font-medium text-blue-700 mb-2">📱 Add mobile number for SMS reminders?</p>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 0712 345 678"
-                    value={bookingPhone}
-                    onChange={e => setBookingPhone(e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm rounded-xl border border-blue-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
-                  />
-                  <p className="text-[10px] text-blue-400 mt-1.5">Optional — skip if you prefer</p>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => {
-                    setShowAdhocForm(false)
-                    setAdhocFormPatient(null)
-                    setAdhocFormHospital(null)
-                    setAdhocFormTime('')
-                    setAdhocFormNote('')
-                    setBookingPhone('')
-                  }}
-                  className="text-sm text-gray-400 px-3 py-2 hover:text-gray-600 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  disabled={!adhocFormPatient || !adhocFormHospital || !adhocFormTime || adhocFormSaving}
-                  onClick={async () => {
-                    setAdhocFormSaving(true)
-                    try {
-                      const visitTime = new Date(`${adhocFormDate}T${adhocFormTime}:00`).toISOString()
-                      const newBooking = await createAdhocBooking(
-                        user.team_id, user.id,
-                        adhocFormPatient.id, adhocFormHospital.id,
-                        adhocFormDate, visitTime, adhocFormNote,
-                        selectedDoctorId
-                      )
-                      if (bookingPhone.trim()) {
-                        await updatePatientContact(adhocFormPatient.id, { phone: bookingPhone.trim() })
-                          .catch(err => { console.error(err); showToast('Booking created, but the phone number could not be saved.', 'error') })
-                      }
-                      setAdhocBookings(prev => [...prev, {
-                        ...newBooking,
-                        patients: adhocFormPatient,
-                        hospitals: adhocFormHospital,
-                      }])
-                      setShowAdhocForm(false)
-                      setAdhocFormPatient(null)
-                      setAdhocFormHospital(null)
-                      setAdhocFormTime('')
-                      setAdhocFormNote('')
-                      setBookingPhone('')
-                    } catch (e) {
-                      console.error('Adhoc booking failed:', e)
-                      showToast('Failed to create the booking — please try again.')
-                    } finally {
-                      setAdhocFormSaving(false)
-                    }
-                  }}
-                  className="bg-[#007AFF] text-white text-sm font-semibold px-4 py-2 rounded-xl disabled:opacity-40 transition-opacity"
-                >
-                  {adhocFormSaving ? 'Saving…' : 'Save'}
-                </button>
+              <div className="w-full lg:w-64 flex-shrink-0">
+                <CalendarRail
+                  date={date}
+                  schedule={gridSchedule}
+                  adhocBookings={adhocBookings}
+                  density={density}
+                  blockedRanges={blockedRanges}
+                  onSelectDate={openDay}
+                />
               </div>
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {view === 'week' && (
+          <WeekGrid date={date} schedule={weekSchedule} loading={weekLoading} onSelectDate={openDay} />
+        )}
+
+        {view === 'month' && (
+          <MonthGrid date={date} density={density} loading={false} onSelectDate={openDay} />
+        )}
       </div>
-
-      {/* Adhoc scan modal */}
-      {showAdhocScan && (
-        <ModalShell onClose={() => { setShowAdhocScan(false); setAdhocScanPreview(null); setAdhocScanError(null) }}>
-          <div className="glass-rim rounded-3xl p-2.5 w-full max-w-sm">
-            <div className="surface-shell">
-            <div className="flex items-center justify-between px-4 pt-4 pb-2">
-              <p className="text-sm font-semibold text-gray-800">Scan Hospital Tag</p>
-              <button
-                onClick={() => { setShowAdhocScan(false); setAdhocScanPreview(null); setAdhocScanError(null) }}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="px-4 pb-4 space-y-3">
-              <TagScanDropzone
-                onFile={handleAdhocScanFile}
-                isScanning={adhocIsScanning}
-                preview={adhocScanPreview}
-                error={adhocScanError}
-                onClear={() => { setAdhocScanPreview(null); setAdhocScanError(null) }}
-              />
-            </div>
-            </div>
-          </div>
-        </ModalShell>
-      )}
 
       {/* New Visit modal — prefilled to selected slot */}
       <NewVisitModal

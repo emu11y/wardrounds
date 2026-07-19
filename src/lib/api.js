@@ -5,11 +5,13 @@ import { logActivity } from './activityLog'
 // secrets (Supabase Dashboard → Edge Functions → Secrets). Never expose
 // it client-side.
 
+// Full 24-hour grid (00:00–23:30, 48 half-hour slots). Surgeons book 1 AM
+// theatre lists; the calendar's per-day working-hours filter keeps the UI short
+// by hiding out-of-hours FREE slots (booked/blocked events always render).
 export const ALL_TIME_SLOTS = (() => {
   const slots = []
-  for (let h = 6; h <= 21; h++) {
+  for (let h = 0; h <= 23; h++) {
     for (const m of [0, 30]) {
-      if (h === 21 && m === 30) break
       slots.push(`${String(h).padStart(2, '0')}:${m === 0 ? '00' : '30'}`)
     }
   }
@@ -1408,6 +1410,67 @@ export async function fetchScheduleForDate(teamId, doctorId, date) {
     .eq('doctor_id', doctorId)
     .eq('visit_date', date)
     .neq('status', 'cancelled')
+    .order('visit_time', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// Range variant of fetchScheduleForDate — powers the Week view (calendar plan §3.2).
+export async function fetchScheduleForRange(teamId, doctorId, fromDate, toDate) {
+  const { data, error } = await supabase
+    .from('outpatient_visits')
+    .select('*, patients(id, first_name, last_name, date_of_birth, email, phone), hospitals(id, name, color, address)')
+    .eq('team_id', teamId)
+    .eq('doctor_id', doctorId)
+    .gte('visit_date', fromDate)
+    .lte('visit_date', toDate)
+    .neq('status', 'cancelled')
+    .order('visit_time', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// Lightweight per-day density (Month view, MiniMonth dots): no joins, 3 columns.
+export async function fetchMonthDensity(teamId, doctorId, fromDate, toDate) {
+  let q = supabase
+    .from('outpatient_visits')
+    .select('visit_date, status, is_adhoc')
+    .eq('team_id', teamId)
+    .gte('visit_date', fromDate)
+    .lte('visit_date', toDate)
+    .neq('status', 'cancelled')
+  if (doctorId) q = q.eq('doctor_id', doctorId)
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
+}
+
+// Future blocked slots (grouped into ranges client-side by calendarUtils).
+export async function fetchBlockedSlots(teamId, doctorId, fromDate) {
+  let q = supabase
+    .from('outpatient_visits')
+    .select('visit_date, visit_time, notes')
+    .eq('team_id', teamId)
+    .eq('status', 'blocked')
+    .gte('visit_date', fromDate)
+  if (doctorId) q = q.eq('doctor_id', doctorId)
+  const { data, error } = await q
+    .order('visit_date', { ascending: true })
+    .order('visit_time', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// A patient's upcoming visits — powers the "when is X booked?" header search.
+export async function fetchUpcomingPatientVisits(teamId, patientId, fromDate) {
+  const { data, error } = await supabase
+    .from('outpatient_visits')
+    .select('id, visit_date, visit_time, status, is_adhoc, doctor_id, hospitals(id, name)')
+    .eq('team_id', teamId)
+    .eq('patient_id', patientId)
+    .gte('visit_date', fromDate)
+    .neq('status', 'cancelled')
+    .order('visit_date', { ascending: true })
     .order('visit_time', { ascending: true })
   if (error) throw error
   return data || []
