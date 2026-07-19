@@ -1,9 +1,9 @@
 // Week view: 7 Monday-start columns of compact status-coloured chips.
 // Clicking a chip or a day column jumps to that day's Day view for management.
 import { todayStr } from '../../lib/utils'
-import { fmtSlot, slotKeyFromVisit } from '../../lib/api'
+import { slotKeyFromVisit } from '../../lib/api'
 import { VISIT_STATUS_STYLES, visitStatusKey } from '../../lib/theme'
-import { weekDates, toHM } from './calendarUtils'
+import { weekDates, toHM, fmtSlotCompact } from './calendarUtils'
 
 export default function WeekGrid({ date, schedule, loading, onSelectDate }) {
   const days = weekDates(date)
@@ -58,8 +58,9 @@ export default function WeekGrid({ date, schedule, loading, onSelectDate }) {
                   {byDay[d].map(ev => {
                     const st = VISIT_STATUS_STYLES[ev.key]
                     return (
-                      <span key={ev.id} className={`block rounded-lg px-1.5 py-1 text-[9px] leading-tight truncate border-l-2 ${st.card} ${st.title}`}>
-                        {ev.time ? `${fmtSlot(ev.time)} ` : ''}{ev.label}
+                      <span key={ev.id} className={`flex items-baseline gap-1 rounded-lg px-1.5 py-1 text-[9px] leading-tight border-l-2 ${st.card} ${st.title}`}>
+                        {ev.time && <span className="flex-shrink-0 font-semibold">{fmtSlotCompact(ev.time)}</span>}
+                        <span className="truncate min-w-0">{ev.label}</span>
                       </span>
                     )
                   })}

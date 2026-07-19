@@ -25,6 +25,15 @@ export function hourLabel(slot) {
   return `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`
 }
 
+// Compact slot label for narrow spaces (week-view pills): "06:00" → "6am",
+// "09:30" → "9:30am" — minutes dropped when :00, no space before am/pm.
+export function fmtSlotCompact(slot) {
+  const [h, m] = slot.split(':').map(Number)
+  const ampm = h < 12 ? 'am' : 'pm'
+  const h12 = h % 12 || 12
+  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`
+}
+
 // Local "HH:MM" for a Date (used for the now-line and adhoc snapping)
 export function toHM(d) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
