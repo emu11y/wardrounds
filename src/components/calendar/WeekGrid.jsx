@@ -5,14 +5,20 @@ import { slotKeyFromVisit } from '../../lib/api'
 import { VISIT_STATUS_STYLES, visitStatusKey } from '../../lib/theme'
 import { weekDates, toHM, fmtSlotCompact } from './calendarUtils'
 
+// Fixed display order for the legend — only keys actually present in the
+// current week are shown, so the legend stays short on a quiet week.
+const LEGEND_ORDER = ['confirmed', 'pending', 'declined', 'blocked', 'seen', 'adhoc']
+
 export default function WeekGrid({ date, schedule, loading, onSelectDate }) {
   const days = weekDates(date)
   const today = todayStr()
 
   const byDay = Object.fromEntries(days.map(d => [d, []]))
+  const usedKeys = new Set()
   for (const v of schedule) {
     if (!byDay[v.visit_date]) continue
     const key = v.is_adhoc ? 'adhoc' : visitStatusKey(v)
+    usedKeys.add(key)
     const time = v.is_adhoc
       ? (v.visit_time ? toHM(new Date(v.visit_time)) : null)
       : slotKeyFromVisit(v)
@@ -26,9 +32,20 @@ export default function WeekGrid({ date, schedule, loading, onSelectDate }) {
     })
   }
   for (const d of days) byDay[d].sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+  const legendKeys = LEGEND_ORDER.filter(k => usedKeys.has(k))
 
   return (
     <div className="border border-gray-200 rounded-2xl bg-white/70 p-3">
+      {legendKeys.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pb-2 mb-2 border-b border-gray-100">
+          {legendKeys.map(k => (
+            <span key={k} className="flex items-center gap-1 text-[9px] text-gray-500">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${VISIT_STATUS_STYLES[k].dot}`} />
+              {VISIT_STATUS_STYLES[k].label}
+            </span>
+          ))}
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center py-12 gap-2">
           <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
