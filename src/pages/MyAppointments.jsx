@@ -19,6 +19,8 @@ import TagScanDropzone from '../components/TagScanDropzone'
 import DoctorPicker from '../components/DoctorPicker'
 import PatientSearch from '../components/PatientSearch'
 import Toast from '../components/Toast'
+import CalendarHeader from '../components/calendar/CalendarHeader'
+import DayTimeline from '../components/calendar/DayTimeline'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -358,10 +360,6 @@ export default function MyAppointments() {
     if (key) slotMap[key] = v
   }
 
-  const bookedCount  = schedule.filter(v => v.status !== 'blocked').length
-  const blockedCount = schedule.filter(v => v.status === 'blocked').length
-  const availableCount = ALL_TIME_SLOTS.length - schedule.length
-
   function prevDay() {
     const d = new Date(date); d.setDate(d.getDate() - 1)
     setDate(d.toISOString().split('T')[0])
@@ -528,107 +526,27 @@ export default function MyAppointments() {
             </div>
           </div>
 
-        {/* Date picker */}
-        <div className="border border-gray-200 rounded-2xl bg-white/70 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Date</p>
-          <div className="flex items-center gap-2">
-            <button onClick={prevDay} className="w-8 h-8 rounded-xl bg-black/[0.06] flex items-center justify-center hover:bg-black/10 transition-colors">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/80 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-ios-blue/30"
-            />
-            <button onClick={nextDay} className="w-8 h-8 rounded-xl bg-black/[0.06] flex items-center justify-center hover:bg-black/10 transition-colors">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
-            </button>
-          </div>
-        </div>
+        {/* Calendar header: Today · arrows · date title · view pill */}
+        <CalendarHeader
+          date={date}
+          onDateChange={setDate}
+          onPrev={prevDay}
+          onNext={nextDay}
+        />
 
-        {/* Schedule grid */}
-        <div className="border border-gray-200 rounded-2xl bg-white/70 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-gray-800">{formattedDate}</p>
-            {!loading && (
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1 text-[11px] text-green-600">
-                  <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />{availableCount} available
-                </span>
-                <span className="flex items-center gap-1 text-[11px] text-blue-500">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />{bookedCount} booked
-                </span>
-                {blockedCount > 0 && (
-                  <span className="flex items-center gap-1 text-[11px] text-red-500">
-                    <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />{blockedCount} blocked
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-12 gap-2">
-              <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
-              <span className="text-xs text-gray-400">Loading schedule…</span>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-              {ALL_TIME_SLOTS.map(slot => {
-                const v = slotMap[slot]
-                const isBlocked = v?.status === 'blocked'
-                const isBooked  = v && !isBlocked
-                const patientName = isBooked
-                  ? `${v.patients?.first_name || ''} ${v.patients?.last_name || ''}`.trim() || 'Patient'
-                  : null
-                const isRescheduleTarget = rescheduling && !v
-
-                return (
-                  <button
-                    key={slot}
-                    onClick={() => isRescheduleTarget ? handleRescheduleToSlot(slot) : handleSlotClick(slot)}
-                    className={`rounded-2xl px-3 py-3 text-left transition-all border min-h-[64px] ${
-                      isBlocked
-                        ? 'bg-red-50 border-red-100 hover:bg-red-100'
-                        : isBooked
-                          ? 'bg-blue-50 border-blue-100 hover:bg-blue-100'
-                          : isRescheduleTarget
-                            ? 'bg-blue-50 border-blue-300 border-dashed hover:bg-blue-100 ring-2 ring-blue-200'
-                            : blockMode
-                              ? 'bg-green-50 border-green-100 hover:bg-red-50 hover:border-red-200'
-                              : 'bg-green-50 border-green-100 hover:bg-green-100'
-                    }`}
-                  >
-                    <p className={`text-xs font-bold leading-tight ${
-                      isBlocked ? 'text-red-600' : isBooked ? 'text-blue-700' : 'text-green-700'
-                    }`}>
-                      {fmtSlot(slot)}
-                    </p>
-                    <p className={`text-[10px] mt-0.5 truncate ${
-                      isBlocked ? 'text-red-400' : isBooked ? 'text-blue-500' : 'text-green-500'
-                    }`}>
-                      {isBlocked ? (v.notes || 'Blocked') : isBooked ? patientName : 'Available'}
-                    </p>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Legend */}
-          <div className="flex items-center gap-4 justify-center pt-4 mt-2 border-t border-black/[0.05]">
-            {[
-              { color: 'bg-green-400', label: 'Available' },
-              { color: 'bg-blue-400', label: 'Booked' },
-              { color: 'bg-red-400', label: 'Blocked' },
-            ].map(({ color, label }) => (
-              <span key={label} className="flex items-center gap-1 text-[10px] text-gray-400">
-                <span className={`w-2 h-2 rounded-full ${color}`} />{label}
-              </span>
-            ))}
-          </div>
-        </div>
+        {/* Day timeline (status-coloured cards, merged blocks, collapsed gaps) */}
+        <DayTimeline
+          date={date}
+          isToday={date === todayStr()}
+          loading={loading}
+          schedule={schedule}
+          slotMap={slotMap}
+          adhocBookings={adhocBookings}
+          blockMode={blockMode}
+          rescheduling={rescheduling}
+          onSlotClick={handleSlotClick}
+          onRescheduleToSlot={handleRescheduleToSlot}
+        />
 
         {/* Other Bookings */}
         <div className={`${GLASS_CARD} p-4 shadow-sm`}>
