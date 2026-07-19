@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp, Lock } from 'lucide-react'
 import { fmtSlot, slotKeyFromVisit, ALL_TIME_SLOTS } from '../../lib/api'
 import { GLASS_CARD, VISIT_STATUS_STYLES, visitStatusKey } from '../../lib/theme'
-import { toHM } from './calendarUtils'
+import { toHM, groupAgendaBlocks, fmtSlotRange } from './calendarUtils'
 import MiniMonth from './MiniMonth'
 import BlockedDatesCard from './BlockedDatesCard'
 
@@ -26,7 +26,7 @@ function Card({ id, title, icon = null, collapsed, onToggle, children }) {
   )
 }
 
-export default function CalendarRail({ date, schedule, adhocBookings, density, blockedRanges, onSelectDate }) {
+export default function CalendarRail({ date, schedule, adhocBookings, density, blockedRanges, onSelectDate, onEditBlockRange, onUnblockRange }) {
   const [collapsed, setCollapsed] = useState(loadCollapsed)
   function toggle(id) {
     setCollapsed(prev => {
@@ -37,12 +37,18 @@ export default function CalendarRail({ date, schedule, adhocBookings, density, b
     })
   }
 
+  // Blocked slots collapse into ranges (a blocked day is ONE agenda line, not 48)
+  const blockedItems = groupAgendaBlocks(
+    schedule
+      .filter(v => v.status === 'blocked' && slotKeyFromVisit(v))
+      .map(v => ({ slot: slotKeyFromVisit(v), label: v.notes || 'Blocked', dot: VISIT_STATUS_STYLES.blocked.dot }))
+  ).map(b => ({ time: b.slot, timeLabel: fmtSlotRange(b.slot, b.end), label: b.label, dot: b.dot }))
+
   const agenda = [
-    ...schedule.map(v => ({
+    ...blockedItems,
+    ...schedule.filter(v => v.status !== 'blocked').map(v => ({
       time: slotKeyFromVisit(v),
-      label: v.status === 'blocked'
-        ? (v.notes || 'Blocked')
-        : `${v.patients?.first_name || ''} ${v.patients?.last_name || ''}`.trim() || 'Patient',
+      label: `${v.patients?.first_name || ''} ${v.patients?.last_name || ''}`.trim() || 'Patient',
       dot: VISIT_STATUS_STYLES[visitStatusKey(v)].dot,
     })),
     ...adhocBookings.filter(b => b.visit_time).map(b => ({
@@ -74,7 +80,7 @@ export default function CalendarRail({ date, schedule, adhocBookings, density, b
               {agenda.map((a, i) => (
                 <span key={i} className="flex items-center gap-1.5 text-[11px] text-gray-700 min-w-0">
                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.dot}`} />
-                  <span className="text-gray-400 flex-shrink-0">{fmtSlot(a.time)}</span>
+                  <span className="text-gray-400 flex-shrink-0">{a.timeLabel || fmtSlot(a.time)}</span>
                   <span className="truncate">{a.label}</span>
                 </span>
               ))}
@@ -83,7 +89,7 @@ export default function CalendarRail({ date, schedule, adhocBookings, density, b
       </Card>
 
       <Card id="blocked" title="Blocked dates" icon={<Lock size={11} className="text-red-400" />} collapsed={collapsed.has('blocked')} onToggle={toggle}>
-        <BlockedDatesCard ranges={blockedRanges} onSelectDate={onSelectDate} />
+        <BlockedDatesCard ranges={blockedRanges} onEdit={onEditBlockRange} onUnblock={onUnblockRange} />
       </Card>
 
       <Card id="stats" title="Day summary" collapsed={collapsed.has('stats')} onToggle={toggle}>

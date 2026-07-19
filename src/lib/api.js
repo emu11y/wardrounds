@@ -1449,7 +1449,7 @@ export async function fetchMonthDensity(teamId, doctorId, fromDate, toDate) {
 export async function fetchBlockedSlots(teamId, doctorId, fromDate) {
   let q = supabase
     .from('outpatient_visits')
-    .select('visit_date, visit_time, notes')
+    .select('id, visit_date, visit_time, notes')
     .eq('team_id', teamId)
     .eq('status', 'blocked')
     .gte('visit_date', fromDate)
@@ -1527,6 +1527,16 @@ export async function unblockSlot(visitId) {
     .from('outpatient_visits')
     .delete()
     .eq('id', visitId)
+  if (error) throw error
+}
+
+// Bulk variant — removes a whole blocked range in one call (Blocked-dates card).
+export async function unblockSlots(visitIds) {
+  if (!visitIds?.length) return
+  const { error } = await supabase
+    .from('outpatient_visits')
+    .delete()
+    .in('id', visitIds)
   if (error) throw error
 }
 

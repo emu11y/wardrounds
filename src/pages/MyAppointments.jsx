@@ -6,7 +6,7 @@ import {
   fetchScheduleForDate, blockSlot, blockSlotRange, unblockSlot,
   cancelVisit, rescheduleVisit, fetchHospitals, checkInVisit,
   fetchAdhocBookings, fetchScheduleForRange, fetchMonthDensity, fetchBlockedSlots,
-  ALL_TIME_SLOTS, fetchMembersWithPositions, fmtSlot, slotKeyFromVisit,
+  unblockSlots, ALL_TIME_SLOTS, fetchMembersWithPositions, fmtSlot, slotKeyFromVisit,
 } from '../lib/api'
 import { todayStr } from '../lib/utils'
 import TopHeader from '../components/TopHeader'
@@ -29,12 +29,12 @@ import { shiftDate, shiftMonth, weekDates, monthBounds, groupBlockedRanges } fro
 
 // ─── Block Range Modal (single-day OR multi-day) ────────────────────────────
 
-function BlockRangeModal({ onClose, onBlocked }) {
-  const [fromDate, setFromDate] = useState(todayStr())
-  const [fromSlot, setFromSlot] = useState('08:00')
-  const [toDate, setToDate]     = useState(todayStr())
-  const [toSlot, setToSlot]     = useState('17:00')
-  const [reason, setReason]     = useState('')
+function BlockRangeModal({ onClose, onBlocked, initial = null }) {
+  const [fromDate, setFromDate] = useState(initial?.fromDate || todayStr())
+  const [fromSlot, setFromSlot] = useState(initial?.fromSlot || '08:00')
+  const [toDate, setToDate]     = useState(initial?.toDate || todayStr())
+  const [toSlot, setToSlot]     = useState(initial?.toSlot || '17:00')
+  const [reason, setReason]     = useState(initial?.reason || '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]       = useState(null)
 
@@ -88,8 +88,8 @@ function BlockRangeModal({ onClose, onBlocked }) {
         <div className="surface-shell">
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div>
-            <h2 className="font-bold text-base text-gray-900">Block Availability</h2>
-            <p className="text-xs text-gray-500">Single day or multi-day range</p>
+            <h2 className="font-bold text-base text-gray-900">{initial ? 'Edit Block' : 'Block Availability'}</h2>
+            <p className="text-xs text-gray-500">{initial ? 'Adjust dates, times or reason — the old block is replaced' : 'Single day or multi-day range'}</p>
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors">
             <X size={14} />
@@ -298,6 +298,7 @@ export default function MyAppointments() {
 
   // View state: day (default) | week | month
   const [view, setView] = useState('day')
+  const [editingRange, setEditingRange] = useState(null) // blocked range being edited via BlockRangeModal
   const [weekSchedule, setWeekSchedule] = useState([])
   const [weekLoading, setWeekLoading] = useState(false)
   const [density, setDensity] = useState({})
@@ -427,8 +428,14 @@ export default function MyAppointments() {
     }
 
     if (existing.status === 'blocked') {
-      // Unblock on click
-      await unblockSlot(existing.id)
+      // Unblock on click — with visible feedback (silent success felt broken)
+      try {
+        await unblockSlot(existing.id)
+        showToast(`${fmtSlot(slot)} unblocked`, 'success')
+      } catch (err) {
+        console.error(err)
+        showToast('Failed to unblock the slot — please try again.')
+      }
       loadSchedule()
       return
     }
@@ -565,6 +572,17 @@ export default function MyAppointments() {
                   density={density}
                   blockedRanges={blockedRanges}
                   onSelectDate={openDay}
+                  onEditBlockRange={r => { setEditingRange(r); setShowRangeModal(true) }}
+                  onUnblockRange={async r => {
+                    try {
+                      await unblockSlots(r.ids)
+                      showToast(`Unblocked ${r.ids.length} slot${r.ids.length !== 1 ? 's' : ''}`, 'success')
+                    } catch (err) {
+                      console.error(err)
+                      showToast('Failed to unblock — please try again.')
+                    }
+                    loadSchedule()
+                  }}
                 />
               </div>
             </div>
@@ -619,11 +637,20 @@ export default function MyAppointments() {
         />
       )}
 
-      {/* Block range modal */}
+      {/* Block range modal (also used to EDIT an existing range: old slots are
+          removed first, then the new range is created) */}
       {showRangeModal && (
         <BlockRangeModal
-          onClose={() => setShowRangeModal(false)}
+          initial={editingRange ? {
+            fromDate: editingRange.from,
+            toDate: editingRange.to,
+            fromSlot: editingRange.fromTime || '00:00',
+            toSlot: editingRange.lastSlot || '23:30',
+            reason: editingRange.notes,
+          } : null}
+          onClose={() => { setShowRangeModal(false); setEditingRange(null) }}
           onBlocked={async (pairs, reason) => {
+            if (editingRange) await unblockSlots(editingRange.ids)
             // Group pairs by date and call blockSlotRange for each day in parallel
             const byDate = {}
             for (const { date: d, time } of pairs) {
@@ -635,6 +662,7 @@ export default function MyAppointments() {
                 blockSlotRange(user.team_id, user.id, d, times, reason, selectedDoctorId)
               )
             )
+            setEditingRange(null)
             loadSchedule()
           }}
         />

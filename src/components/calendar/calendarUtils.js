@@ -9,9 +9,14 @@ export function endOfSlot(slot) {
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
 
-// "9:00 AM – 10:30 AM"
+// "9:00 AM – 10:30 AM". End is exclusive; "24:00" (end of the 23:30 slot)
+// must read as midnight, not noon.
+export function fmtSlotEnd(endExclusive) {
+  return endExclusive === '24:00' ? '12:00 AM' : fmtSlot(endExclusive)
+}
+
 export function fmtSlotRange(startSlot, endExclusive) {
-  return `${fmtSlot(startSlot)} – ${fmtSlot(endExclusive)}`
+  return `${fmtSlot(startSlot)} – ${fmtSlotEnd(endExclusive)}`
 }
 
 // "08:00" → "8 AM" (hour gutter label)
@@ -65,7 +70,10 @@ export function buildDayRows({ slotMap, adhocBookings = [], expandedGroups = new
           group.push(nv); j++
         } else break
       }
-      const id = `blk-${slot}`
+      // Key blocked-group expansion by REASON, not start slot: after unblocking
+      // one slot the group's start shifts, and a slot-keyed id would re-collapse
+      // the group mid-workflow (felt like unblock "didn't work").
+      const id = `blk-${v.notes || ''}`
       if (group.length > 1 && !expandedGroups.has(id)) {
         rows.push({
           type: 'blockedGroup', id, visits: group, start: slot,
@@ -180,9 +188,10 @@ export function groupBlockedRanges(blockedSlots) {
   const byDay = new Map()
   for (const b of blockedSlots) {
     const key = `${b.visit_date}|${b.notes || ''}`
-    if (!byDay.has(key)) byDay.set(key, { date: b.visit_date, notes: b.notes || 'Blocked', slots: [] })
+    if (!byDay.has(key)) byDay.set(key, { date: b.visit_date, notes: b.notes || 'Blocked', slots: [], ids: [] })
     const t = b.visit_time ? toHM(new Date(b.visit_time)) : null
     if (t) byDay.get(key).slots.push(t)
+    if (b.id) byDay.get(key).ids.push(b.id)
   }
   const days = [...byDay.values()].sort((a, b) =>
     a.date === b.date ? a.notes.localeCompare(b.notes) : a.date.localeCompare(b.date))
@@ -192,15 +201,35 @@ export function groupBlockedRanges(blockedSlots) {
     if (last && last.notes === day.notes && shiftDate(last.to, 1) === day.date) {
       last.to = day.date
       last.partial = false
+      last.lastSlot = day.slots[day.slots.length - 1] || last.lastSlot
+      last.ids.push(...day.ids)
     } else {
       const fullDay = day.slots.length >= ALL_TIME_SLOTS.length
       ranges.push({
         from: day.date, to: day.date, notes: day.notes,
         partial: !fullDay && day.slots.length > 0,
         fromTime: day.slots[0] || null,
+        lastSlot: day.slots[day.slots.length - 1] || null,
         toTime: day.slots.length ? endOfSlot(day.slots[day.slots.length - 1]) : null,
+        ids: [...day.ids],
       })
     }
   }
   return ranges
+}
+
+// Merge consecutive same-label blocked slots into agenda range entries.
+// Input: [{ slot, label, dot }] (slot = "HH:MM"); output items gain `end`.
+export function groupAgendaBlocks(items) {
+  const sorted = [...items].sort((a, b) => a.slot.localeCompare(b.slot))
+  const out = []
+  for (const it of sorted) {
+    const last = out[out.length - 1]
+    if (last && last.label === it.label && last.end === it.slot) {
+      last.end = endOfSlot(it.slot)
+    } else {
+      out.push({ ...it, end: endOfSlot(it.slot) })
+    }
+  }
+  return out
 }
