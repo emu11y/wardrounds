@@ -53,15 +53,24 @@ export default function WeekGrid({ date, schedule, loading, onSelectDate }) {
                 </button>
                 <div
                   onClick={() => onSelectDate(d)}
-                  className="min-h-[140px] rounded-xl bg-black/[0.02] p-1 flex flex-col gap-1 cursor-pointer hover:bg-black/[0.04] transition-colors"
+                  className="min-h-[140px] rounded-xl bg-black/[0.02] p-1.5 pt-2 cursor-pointer hover:bg-black/[0.04] transition-colors overflow-hidden"
                 >
-                  {byDay[d].map(ev => {
+                  {byDay[d].map((ev, i) => {
                     const st = VISIT_STATUS_STYLES[ev.key]
+                    const isLast = i === byDay[d].length - 1
+                    // Split "9:30am" → "9:30" + "am" so a wrap (7 narrow columns on
+                    // mobile) breaks at the natural boundary instead of mid-digit.
+                    const timeParts = ev.time ? fmtSlotCompact(ev.time).match(/^(.*?)(am|pm)$/) : null
                     return (
-                      <span key={ev.id} className={`flex items-baseline gap-1 rounded-lg px-1.5 py-1 text-[9px] leading-tight border-l-2 ${st.card} ${st.title}`}>
-                        {ev.time && <span className="flex-shrink-0 font-semibold">{fmtSlotCompact(ev.time)}</span>}
-                        <span className="truncate min-w-0">{ev.label}</span>
-                      </span>
+                      <div key={ev.id} className="flex gap-1 min-w-0" title={ev.label}>
+                        <div className="flex flex-col items-center flex-shrink-0">
+                          <span className={`w-1 h-1 rounded-full flex-shrink-0 mt-[3px] ${st.dot}`} />
+                          {!isLast && <span className="w-px flex-1 bg-black/10" style={{ minHeight: '8px' }} />}
+                        </div>
+                        <span className="min-w-0 break-words text-[8px] font-semibold text-gray-700 leading-tight pb-1">
+                          {timeParts ? <>{timeParts[1]}<wbr />{timeParts[2]}</> : ev.label}
+                        </span>
+                      </div>
                     )
                   })}
                 </div>
