@@ -271,45 +271,48 @@ export default function Sidebar() {
         {/* User footer */}
         <div className="px-3 pt-3 pb-4 border-t border-white/20">
           {user && !collapsed && (
-            <div>
-              {/* Profile card — always visible accordion toggle */}
+            // Glassmorphic account card — the #023859 tint stays visible whether
+            // collapsed or expanded (only the menu section's height animates),
+            // so the container always reads as high-contrast, not just on hover.
+            <div className="rounded-2xl overflow-hidden bg-[#023859]/85 backdrop-blur-xl border border-white/10 shadow-lg">
+              {/* Profile row — always visible accordion toggle */}
               <button
                 onClick={() => setOpenGroup(openGroup === 'user' ? null : 'user')}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-2xl hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/10 transition-colors"
               >
                 <div className="flex-shrink-0">
                   {user.avatar_url ? (
-                    <img src={user.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover" />
+                    <img src={user.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover ring-2 ring-white/20" />
                   ) : (
-                    <div className="w-14 h-14 rounded-full bg-ios-blue/20 flex items-center justify-center">
-                      <span className="text-xl font-bold text-ios-blue">{user.full_name?.[0]?.toUpperCase() || '?'}</span>
+                    <div className="w-14 h-14 rounded-full bg-white/15 flex items-center justify-center">
+                      <span className="text-xl font-bold text-white">{user.full_name?.[0]?.toUpperCase() || '?'}</span>
                     </div>
                   )}
                 </div>
                 <div className="text-left flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 leading-tight break-words">{user.full_name}</p>
-                  <p className="text-xs text-gray-500 capitalize">{user.role?.replace('_', ' ')}</p>
+                  <p className="text-sm font-semibold text-white leading-tight break-words">{user.full_name}</p>
+                  <p className="text-xs text-white/60 capitalize">{user.role?.replace('_', ' ')}</p>
                 </div>
                 <ChevronDown
                   size={14}
-                  className={`text-ios-gray-1 flex-shrink-0 transition-transform duration-200 ${openGroup === 'user' ? 'rotate-180' : ''}`}
+                  className={`text-white/60 flex-shrink-0 transition-transform duration-[400ms] ${openGroup === 'user' ? 'rotate-180' : ''}`}
                 />
               </button>
 
-              {/* Toggleable menu */}
-              <div className={`overflow-hidden transition-all duration-300 ease-out ${openGroup === 'user' ? 'max-h-48 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
-                <div className="space-y-0.5 pl-2">
+              {/* Toggleable menu — smooth (not-too-fast) expand within the same tinted card */}
+              <div className={`overflow-hidden transition-all duration-[400ms] ease-in-out ${openGroup === 'user' ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="space-y-0.5 px-2 pb-2 pt-1 border-t border-white/10 mx-2">
                   <button
                     onClick={() => { navigate('/analytics'); setMobileOpen(false) }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all ${isLocked('view_analytics') ? 'opacity-60' : ''}`}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/80 hover:bg-white/10 transition-colors ${isLocked('view_analytics') ? 'opacity-60' : ''}`}
                   >
                     <BarChart2 size={13} className="flex-shrink-0" />
                     Analytics
-                    {isLocked('view_analytics') && <Lock size={12} className="ml-auto flex-shrink-0 text-ios-gray-1" />}
+                    {isLocked('view_analytics') && <Lock size={12} className="ml-auto flex-shrink-0 text-white/50" />}
                   </button>
                   <button
                     onClick={() => { navigate('/settings'); setMobileOpen(false) }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/80 hover:bg-white/10 transition-colors"
                   >
                     <Settings size={13} className="flex-shrink-0" />
                     Settings
@@ -317,7 +320,7 @@ export default function Sidebar() {
                   {installAvailable && (
                     <button
                       onClick={() => { openInstallModal(); setMobileOpen(false) }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-ios-blue hover:bg-ios-blue/10 transition-all"
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-sky-300 hover:bg-white/10 transition-colors"
                     >
                       <Download size={13} className="flex-shrink-0" />
                       Install App
@@ -325,7 +328,7 @@ export default function Sidebar() {
                   )}
                   <button
                     onClick={() => { handleLogout(); setMobileOpen(false) }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-ios-red hover:bg-ios-red/10 transition-all"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-red-300 hover:bg-red-500/20 transition-colors"
                   >
                     <LogOut size={13} className="flex-shrink-0" />
                     Sign Out
