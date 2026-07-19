@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Lock, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchScheduleForDate, blockSlot, blockSlotRange, unblockSlot,
@@ -487,32 +487,10 @@ export default function MyAppointments() {
       <Toast toast={toast} onDismiss={() => setToast(null)} />
 
       <div className="p-4 space-y-4 pb-24 sm:pb-4">
-        {/* Action row */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-bold text-gray-900 whitespace-nowrap">Appointments</h1>
-            {blockMode
-              ? <p className="text-sm text-red-500 font-medium">Tap empty slots to block</p>
-              : <p className="text-sm text-gray-500">{user?.full_name}</p>
-            }
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setBlockMode(m => !m); setRescheduling(null) }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-semibold transition-colors ${
-                blockMode ? 'bg-red-500 text-white' : 'bg-red-50 text-red-500 hover:bg-red-100'
-              }`}
-            >
-              <Lock size={14} />
-              {blockMode ? 'Done Blocking' : 'Block Availability'}
-            </button>
-            <button
-              onClick={() => setShowRangeModal(true)}
-              className="px-3 py-2 rounded-2xl text-sm font-semibold bg-black/[0.06] text-gray-700 hover:bg-black/10 transition-colors"
-            >
-              Block Range
-            </button>
-          </div>
+        {/* Page heading (block controls live inside the Schedule card) */}
+        <div className="flex flex-col mb-4">
+          <h1 className="text-xl font-bold text-gray-900 whitespace-nowrap">Appointments</h1>
+          <p className="text-sm text-gray-500">{user?.full_name}</p>
         </div>
 
         {/* Reschedule banner */}
@@ -575,6 +553,8 @@ export default function MyAppointments() {
                   rescheduling={rescheduling}
                   onSlotClick={handleSlotClick}
                   onRescheduleToSlot={handleRescheduleToSlot}
+                  onToggleBlockMode={() => { setBlockMode(m => !m); setRescheduling(null) }}
+                  onOpenBlockRange={() => setShowRangeModal(true)}
                 />
               </div>
               <div className="w-full lg:w-64 flex-shrink-0">

@@ -51,6 +51,7 @@ function saveWindow(date, win) {
 export default function DayTimeline({
   date, isToday, loading, schedule, slotMap, adhocBookings,
   blockMode, rescheduling, onSlotClick, onRescheduleToSlot,
+  onToggleBlockMode, onOpenBlockRange,
 }) {
   const [expanded, setExpanded] = useState(() => new Set())
   useEffect(() => { setExpanded(new Set()) }, [date])
@@ -117,7 +118,7 @@ export default function DayTimeline({
         )}
       </div>
 
-      {/* Working-hours window (this day only; persisted) */}
+      {/* Hours window + block controls — one row so blocking feels part of the booking flow */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1">Hours</span>
         <select
@@ -146,7 +147,27 @@ export default function DayTimeline({
         {hiddenFree > 0 && (
           <span className="text-[10px] text-gray-400">{hiddenFree} off-hours free slots hidden</span>
         )}
+        <span className="flex-1" />
+        <button
+          onClick={onToggleBlockMode}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+            blockMode ? 'bg-red-500 text-white' : 'bg-red-50 text-red-500 hover:bg-red-100'
+          }`}
+        >
+          <Lock size={11} />
+          {blockMode ? 'Done blocking' : 'Block'}
+        </button>
+        <button
+          onClick={onOpenBlockRange}
+          className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-black/[0.06] text-gray-600 hover:bg-black/10 transition-colors"
+        >
+          Block range
+        </button>
       </div>
+
+      {blockMode && (
+        <p className="text-[11px] text-red-500 font-medium -mt-1.5 mb-2">Tap empty slots to block them</p>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12 gap-2">
