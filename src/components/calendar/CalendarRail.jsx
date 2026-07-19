@@ -26,7 +26,7 @@ function Card({ id, title, icon = null, collapsed, onToggle, children }) {
   )
 }
 
-export default function CalendarRail({ date, schedule, adhocBookings, density, blockedRanges, onSelectDate, onEditBlockRange, onUnblockRange }) {
+export default function CalendarRail({ date, schedule, adhocBookings, density, blockedRanges, onSelectDate, onEditBlockRange, onUnblockRange, onSelectVisit }) {
   const [collapsed, setCollapsed] = useState(loadCollapsed)
   function toggle(id) {
     setCollapsed(prev => {
@@ -50,11 +50,13 @@ export default function CalendarRail({ date, schedule, adhocBookings, density, b
       time: slotKeyFromVisit(v),
       label: `${v.patients?.first_name || ''} ${v.patients?.last_name || ''}`.trim() || 'Patient',
       dot: VISIT_STATUS_STYLES[visitStatusKey(v)].dot,
+      visit: v,
     })),
     ...adhocBookings.filter(b => b.visit_time).map(b => ({
       time: toHM(new Date(b.visit_time)),
       label: `${b.patients?.first_name || ''} ${b.patients?.last_name || ''}`.trim() || 'Patient',
       dot: VISIT_STATUS_STYLES.adhoc.dot,
+      visit: b,
     })),
   ].filter(a => a.time).sort((a, b) => a.time.localeCompare(b.time))
 
@@ -76,9 +78,20 @@ export default function CalendarRail({ date, schedule, adhocBookings, density, b
         {agenda.length === 0
           ? <p className="text-[11px] text-gray-400">Nothing scheduled</p>
           : (
-            <div className="flex flex-col gap-1.5">
-              {agenda.map((a, i) => (
-                <span key={i} className="flex items-center gap-1.5 text-[11px] text-gray-700 min-w-0">
+            <div className="flex flex-col gap-0.5">
+              {agenda.map((a, i) => a.visit ? (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSelectVisit?.(a.visit)}
+                  className="flex items-center gap-1.5 text-[11px] text-gray-700 min-w-0 -mx-1 px-1 py-0.5 rounded-lg hover:bg-black/[0.05] transition-colors text-left"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.dot}`} />
+                  <span className="text-gray-400 flex-shrink-0">{a.timeLabel || fmtSlot(a.time)}</span>
+                  <span className="truncate font-medium text-ios-blue">{a.label}</span>
+                </button>
+              ) : (
+                <span key={i} className="flex items-center gap-1.5 text-[11px] text-gray-700 min-w-0 px-1 py-0.5">
                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.dot}`} />
                   <span className="text-gray-400 flex-shrink-0">{a.timeLabel || fmtSlot(a.time)}</span>
                   <span className="truncate">{a.label}</span>

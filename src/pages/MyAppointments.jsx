@@ -13,7 +13,7 @@ import TopHeader from '../components/TopHeader'
 import NewVisitModal from '../components/NewVisitModal'
 import ReminderComposeModal from '../components/ReminderComposeModal'
 import ModalShell from '../components/ModalShell'
-import DoctorPicker from '../components/DoctorPicker'
+import DoctorFilterDropdown from '../components/DoctorFilterDropdown'
 import Toast from '../components/Toast'
 import CalendarHeader from '../components/calendar/CalendarHeader'
 import DayTimeline from '../components/calendar/DayTimeline'
@@ -21,6 +21,7 @@ import WeekStrip from '../components/calendar/WeekStrip'
 import WeekGrid from '../components/calendar/WeekGrid'
 import MonthGrid from '../components/calendar/MonthGrid'
 import CalendarRail from '../components/calendar/CalendarRail'
+import BookedSlotModal from '../components/calendar/BookedSlotModal'
 import PatientBookingSearch from '../components/calendar/PatientBookingSearch'
 import { shiftDate, shiftMonth, weekDates, monthBounds, groupBlockedRanges } from '../components/calendar/calendarUtils'
 
@@ -172,83 +173,6 @@ function BlockRangeModal({ onClose, onBlocked, initial = null }) {
   )
 }
 
-// ─── Booked Slot Popover ──────────────────────────────────────────────────────
-
-function BookedSlotModal({ visit, onClose, onCancelBooking, onChangeBooking, onCheckIn, onSendReminder }) {
-  const [checkInError, setCheckInError] = useState(null)
-  const [checkingIn, setCheckingIn] = useState(false)
-  const [doctorId, setDoctorId] = useState('')
-  const patient = visit.patients
-  const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Unknown'
-
-  async function handleCheckIn() {
-    setCheckInError(null)
-    setCheckingIn(true)
-    try {
-      await onCheckIn(visit, doctorId)
-    } catch (err) {
-      setCheckInError(err.message)
-    } finally {
-      setCheckingIn(false)
-    }
-  }
-
-  return (
-    <ModalShell onClose={onClose}>
-      <div className="glass-rim w-full max-w-sm rounded-3xl p-2.5">
-        <div className="surface-shell">
-        <div className="flex items-center justify-between px-5 pt-5 pb-2">
-          <div>
-            <h2 className="font-bold text-base text-gray-900">{name}</h2>
-            <p className="text-xs text-gray-500">
-              {fmtSlot(slotKeyFromVisit(visit))}{visit.hospitals?.name ? ` · ${visit.hospitals.name}` : ''}
-            </p>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors">
-            <X size={14} />
-          </button>
-        </div>
-        <div className="px-5 pb-5 pt-2 space-y-2">
-          <DoctorPicker teamId={visit.team_id} value={doctorId} onChange={setDoctorId} />
-          <button
-            onClick={handleCheckIn}
-            disabled={checkingIn || !doctorId}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-colors"
-          >
-            {checkingIn ? 'Checking in…' : 'Check In'}
-          </button>
-          {checkInError && <p className="text-xs text-red-500">{checkInError}</p>}
-          <button
-            onClick={() => onChangeBooking(visit)}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-          >
-            Change Booking
-          </button>
-          <button
-            onClick={() => onSendReminder(visit)}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
-          >
-            Send Reminder
-          </button>
-          <button
-            onClick={() => onCancelBooking(visit)}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
-          >
-            Cancel Booking
-          </button>
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 rounded-2xl text-sm font-semibold bg-black/[0.06] text-gray-700 hover:bg-black/10 transition-colors"
-          >
-            Exit
-          </button>
-        </div>
-        </div>
-      </div>
-    </ModalShell>
-  )
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MyAppointments() {
@@ -285,6 +209,7 @@ export default function MyAppointments() {
   const [loading, setLoading] = useState(true)
   const [prefillPatient, setPrefillPatient] = useState(null)
   const [pendingPrefillOpen, setPendingPrefillOpen] = useState(false)
+  const [pendingReschedulingVisit, setPendingReschedulingVisit] = useState(null)
 
   // Modals / interaction state
   const [blockMode, setBlockMode] = useState(false)        // single-slot block toggle
@@ -310,12 +235,23 @@ export default function MyAppointments() {
   }, [user?.team_id])
 
   useEffect(() => {
-    const p = location.state?.prefillPatient
-    if (p) {
-      setPrefillPatient(p)
+    const state = location.state
+    if (!state) return
+    if (state.prefillPatient) {
+      setPrefillPatient(state.prefillPatient)
       setPendingPrefillOpen(true)
-      window.history.replaceState({}, '')
     }
+    // Arriving from another page's calendar rail (e.g. Outpatient) — jump to the
+    // visit's date/doctor and open the reschedule flow once that day has loaded.
+    if (state.reschedulingVisit) {
+      const v = state.reschedulingVisit
+      setDate(v.visit_date)
+      if (v.doctor_id) setSelectedDoctorId(v.doctor_id)
+      setPendingReschedulingVisit(v)
+    } else if (state.openDate) {
+      setDate(state.openDate)
+    }
+    window.history.replaceState({}, '')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSchedule = useCallback(async () => {
@@ -476,6 +412,16 @@ export default function MyAppointments() {
 
   // Reschedule: pick a new empty slot, then move the visit there
   const [rescheduling, setRescheduling] = useState(null)
+
+  // Once a cross-page reschedule request (from Outpatient's calendar rail) has
+  // loaded its target day's schedule, drop straight into "pick a new slot" mode.
+  useEffect(() => {
+    if (!loading && pendingReschedulingVisit) {
+      setRescheduling(pendingReschedulingVisit)
+      setPendingReschedulingVisit(null)
+    }
+  }, [loading, pendingReschedulingVisit]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleRescheduleToSlot(slot) {
     if (!rescheduling) return
     try {
@@ -511,22 +457,9 @@ export default function MyAppointments() {
         )}
 
         {/* Doctor selector */}
-          <div className="mb-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Doctor</p>
-            <div className="flex flex-wrap gap-2">
-              {doctors.map(d => (
-                <button
-                  key={d.id}
-                  type="button"
-                  onClick={() => setSelectedDoctorId(d.id)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${selectedDoctorId === d.id ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:text-gray-700'}`}
-                  style={selectedDoctorId === d.id ? { backgroundColor: '#007AFF' } : undefined}
-                >
-                  {d.full_name}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="mb-4">
+          <DoctorFilterDropdown doctors={doctors} value={selectedDoctorId} onChange={setSelectedDoctorId} />
+        </div>
 
         {/* "When is this patient booked?" search */}
         <PatientBookingSearch teamId={user.team_id} onPickDate={openDay} />
@@ -583,6 +516,7 @@ export default function MyAppointments() {
                     }
                     loadSchedule()
                   }}
+                  onSelectVisit={setBookedSlotVisit}
                 />
               </div>
             </div>
@@ -620,6 +554,7 @@ export default function MyAppointments() {
       {bookedSlotVisit && (
         <BookedSlotModal
           visit={bookedSlotVisit}
+          teamId={user.team_id}
           onClose={() => setBookedSlotVisit(null)}
           onCheckIn={handleCheckIn}
           onCancelBooking={handleCancelBooking}

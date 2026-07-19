@@ -9,6 +9,8 @@ import {
   addVisitNote, fetchAllPatientVisitNotes, fetchTeamServices,
   addVisitService, deleteVisitService, ALL_TIME_SLOTS, fmtSlot, updatePatientContact,
   fetchTeamProfile, fetchUserName,
+  fetchScheduleForDate, fetchAdhocBookings, fetchBlockedSlots, fetchMonthDensity,
+  checkInVisit, cancelVisit,
 } from '../lib/api'
 import { sendAppointmentConfirmationSafe } from '../lib/email'
 import { sendAppointmentWhatsAppSafe } from '../lib/whatsapp'
@@ -16,6 +18,11 @@ import LogVisitModal from '../components/LogVisitModal'
 import TopHeader from '../components/TopHeader'
 import ModalShell from '../components/ModalShell'
 import Toast from '../components/Toast'
+import DoctorFilterDropdown from '../components/DoctorFilterDropdown'
+import ReminderComposeModal from '../components/ReminderComposeModal'
+import CalendarRail from '../components/calendar/CalendarRail'
+import BookedSlotModal from '../components/calendar/BookedSlotModal'
+import { monthBounds, groupBlockedRanges } from '../components/calendar/calendarUtils'
 import { calcAge, formatDate, todayStr, darken, formatKES } from '../lib/utils'
 import { getOutpatientStatusStyle } from '../lib/statusBadges'
 
@@ -416,6 +423,72 @@ export default function Outpatient() {
   const [addingServiceId, setAddingServiceId] = useState(null)
   const [selectedServices, setSelectedServices] = useState([])
 
+  // Calendar rail (right column) — today's schedule for whichever doctor is in
+  // view, so a doctor can check patients in/out without leaving this page.
+  const [railSchedule, setRailSchedule] = useState([])
+  const [railAdhoc, setRailAdhoc] = useState([])
+  const [railDensity, setRailDensity] = useState({})
+  const [railBlockedRanges, setRailBlockedRanges] = useState([])
+  const [railVisit, setRailVisit] = useState(null)       // BookedSlotModal target
+  const [railReminderVisit, setRailReminderVisit] = useState(null)
+
+  const clinicalDoctors = teamMembers.filter(d => d.is_clinical === true)
+  // "All doctors" has no single schedule to show — fall back to the current
+  // user (if clinical) or the first clinical doctor, same rule MyAppointments uses.
+  const railDoctorId = selectedDoctor
+    || (clinicalDoctors.some(d => d.id === user?.id) ? user.id : clinicalDoctors[0]?.id)
+    || null
+
+  const loadRailSchedule = useCallback(async () => {
+    if (!user?.team_id || !railDoctorId) { setRailSchedule([]); setRailAdhoc([]); return }
+    try {
+      const today = todayStr()
+      const [sched, adhoc] = await Promise.all([
+        fetchScheduleForDate(user.team_id, railDoctorId, today),
+        fetchAdhocBookings(user.team_id, today, railDoctorId),
+      ])
+      setRailSchedule(sched)
+      setRailAdhoc(adhoc)
+    } catch (err) {
+      console.error(err)
+    }
+  }, [user?.team_id, railDoctorId])
+
+  useEffect(() => { loadRailSchedule() }, [loadRailSchedule])
+
+  useEffect(() => {
+    if (!user?.team_id || !railDoctorId) { setRailDensity({}); setRailBlockedRanges([]); return }
+    const { from, to } = monthBounds(todayStr())
+    fetchMonthDensity(user.team_id, railDoctorId, from, to)
+      .then(rows => {
+        const map = {}
+        for (const r of rows) {
+          const e = map[r.visit_date] || (map[r.visit_date] = { booked: 0, blocked: 0, adhoc: 0 })
+          if (r.status === 'blocked') e.blocked++
+          else if (r.is_adhoc) e.adhoc++
+          else e.booked++
+        }
+        setRailDensity(map)
+      })
+      .catch(() => setRailDensity({}))
+    fetchBlockedSlots(user.team_id, railDoctorId, todayStr())
+      .then(rows => setRailBlockedRanges(groupBlockedRanges(rows)))
+      .catch(() => setRailBlockedRanges([]))
+  }, [user?.team_id, railDoctorId, railSchedule])
+
+  async function handleRailCheckIn(visit, doctorId) {
+    await checkInVisit(visit.id, doctorId)
+    setRailVisit(null)
+    loadRailSchedule()
+    loadVisits()
+  }
+
+  async function handleRailCancel(visit) {
+    await cancelVisit(visit.id)
+    setRailVisit(null)
+    loadRailSchedule()
+  }
+
   useEffect(() => {
     if (!user?.team_id) return
     Promise.all([
@@ -634,43 +707,16 @@ export default function Outpatient() {
       <div className="px-5 pb-4 space-y-3">
         {/* Doctor filter */}
         {teamMembers.length > 0 && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-ios-gray-1 mb-2">Doctor</p>
-            <div className="flex gap-1.5 flex-wrap">
-              <button
-                onClick={() => setSelectedDoctor(null)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                  selectedDoctor === null ? 'bg-ios-blue text-white' : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
-                }`}
-              >
-                All
-                {countSeen(visits, null, selectedHospital) > 0 && (
-                  <span className={`text-[9px] font-bold rounded-full px-1.5 ${
-                    selectedDoctor === null ? 'bg-white/25 text-white' : 'bg-black/10 text-gray-500'
-                  }`}>{countSeen(visits, null, selectedHospital)}</span>
-                )}
-              </button>
-              {teamMembers.filter(doc => doc.is_clinical === true).map(doc => {
-                const isDocActive = selectedDoctor === doc.id
-                return (
-                  <button
-                    key={doc.id}
-                    onClick={() => setSelectedDoctor(isDocActive ? null : doc.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                      isDocActive ? 'bg-ios-blue text-white' : 'bg-black/[0.06] text-gray-600 hover:bg-black/10'
-                    }`}
-                  >
-                    {doc.full_name}
-                    {countSeen(visits, doc.id, selectedHospital) > 0 && (
-                      <span className={`text-[9px] font-bold rounded-full px-1.5 ${
-                        isDocActive ? 'bg-white/25 text-white' : 'bg-black/10 text-gray-500'
-                      }`}>{countSeen(visits, doc.id, selectedHospital)}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <DoctorFilterDropdown
+            doctors={clinicalDoctors}
+            value={selectedDoctor}
+            onChange={setSelectedDoctor}
+            allowAll
+            counts={{
+              all: countSeen(visits, null, selectedHospital),
+              ...Object.fromEntries(clinicalDoctors.map(doc => [doc.id, countSeen(visits, doc.id, selectedHospital)])),
+            }}
+          />
         )}
 
         {/* Hospital filter */}
@@ -714,8 +760,9 @@ export default function Outpatient() {
         )}
       </div>
 
-      {/* Visit list */}
-      <div className="flex-1 px-4 pb-4 space-y-3">
+      {/* Visit list + calendar rail */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start px-4 pb-4">
+      <div className="flex-1 min-w-0 w-full space-y-3">
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => <div key={i} className="border border-gray-200 rounded-3xl bg-white/70 h-24 animate-pulse" />)}
@@ -1142,6 +1189,43 @@ export default function Outpatient() {
           })
         })()}
       </div>
+
+      <div className="w-full lg:w-64 flex-shrink-0">
+        <CalendarRail
+          date={todayStr()}
+          schedule={railSchedule.filter(v => !v.is_adhoc)}
+          adhocBookings={railAdhoc}
+          density={railDensity}
+          blockedRanges={railBlockedRanges}
+          onSelectDate={d => navigate('/appointments', { state: { openDate: d } })}
+          onEditBlockRange={() => navigate('/appointments')}
+          onUnblockRange={() => navigate('/appointments')}
+          onSelectVisit={setRailVisit}
+        />
+      </div>
+      </div>
+
+      {/* Booked slot options (from the calendar rail's agenda) */}
+      {railVisit && (
+        <BookedSlotModal
+          visit={railVisit}
+          teamId={user.team_id}
+          onClose={() => setRailVisit(null)}
+          onCheckIn={handleRailCheckIn}
+          onCancelBooking={handleRailCancel}
+          onChangeBooking={visit => { setRailVisit(null); navigate('/appointments', { state: { reschedulingVisit: visit } }) }}
+          onSendReminder={visit => { setRailVisit(null); setRailReminderVisit(visit) }}
+        />
+      )}
+
+      {/* Manual reminder compose modal (calendar rail) */}
+      {railReminderVisit && (
+        <ReminderComposeModal
+          visit={railReminderVisit}
+          onClose={() => setRailReminderVisit(null)}
+          notify={showToast}
+        />
+      )}
 
       {/* Booking modal */}
       {bookingVisit && (
