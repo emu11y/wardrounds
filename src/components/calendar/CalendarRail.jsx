@@ -63,7 +63,7 @@ export default function CalendarRail({ date, schedule, adhocBookings, density, b
   const bookedVisits = schedule.filter(v => v.status !== 'blocked')
   const blockedCount = schedule.length - bookedVisits.length
   const stats = [
-    { label: 'Free', value: ALL_TIME_SLOTS.length - schedule.length, cls: 'text-green-600' },
+    { label: 'Free', value: ALL_TIME_SLOTS.length - schedule.length, cls: 'text-gray-500' },
     { label: 'Booked', value: bookedVisits.length + adhocBookings.length, cls: 'text-amber-600' },
     { label: 'Blocked', value: blockedCount, cls: 'text-red-500' },
   ]

@@ -90,7 +90,7 @@ export default function DayTimeline({
   const blockedCount = schedule.filter(v => v.status === 'blocked').length
   const confirmedCount = bookedVisits.filter(v => visitStatusKey(v) === 'confirmed').length
   const counts = [
-    { label: 'free', value: freeInWindow, cls: 'text-green-600', dot: 'bg-green-400' },
+    { label: 'free', value: freeInWindow, cls: 'text-gray-500', dot: 'bg-gray-300' },
     ...(confirmedCount > 0
       ? [
           { label: "RSVP'd", value: confirmedCount, cls: 'text-green-600', dot: 'bg-green-400' },

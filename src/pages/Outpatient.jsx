@@ -227,8 +227,8 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked, not
             <p className="text-sm font-semibold text-gray-800">{formattedDate}</p>
             {!loadingSlots && (
               <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1 text-[11px] text-green-600">
-                  <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+                <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                  <span className="w-2 h-2 rounded-full border-2 border-gray-300 inline-block" />
                   {availableCount} available
                 </span>
                 <span className="flex items-center gap-1 text-[11px] text-blue-500">
@@ -259,13 +259,13 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked, not
                         ? 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-60'
                         : isSelected
                           ? 'bg-ios-blue border-ios-blue text-white shadow-ios-card'
-                          : 'bg-green-50 border-green-100 hover:bg-green-100'
+                          : 'bg-white border-gray-200 hover:border-ios-blue/40 hover:bg-ios-blue/5'
                     }`}
                   >
-                    <p className={`text-xs font-bold leading-tight ${isBooked ? 'text-gray-400' : isSelected ? 'text-white' : 'text-green-700'}`}>
+                    <p className={`text-xs font-bold leading-tight ${isBooked ? 'text-gray-400' : isSelected ? 'text-white' : 'text-gray-800'}`}>
                       {fmtSlot(slot)}
                     </p>
-                    <p className={`text-[10px] mt-0.5 ${isBooked ? 'text-gray-400' : isSelected ? 'text-white/80' : 'text-green-500'}`}>
+                    <p className={`text-[10px] mt-0.5 ${isBooked ? 'text-gray-400' : isSelected ? 'text-white/80' : 'text-ios-blue'}`}>
                       {isBooked ? 'Booked' : 'Available'}
                     </p>
                   </button>
@@ -363,12 +363,12 @@ function BookingModal({ visit, teamId, userId, hospitals, onClose, onBooked, not
           {/* Legend */}
           <div className="flex items-center gap-4 justify-center pt-1">
             {[
-              { color: 'bg-green-400', label: 'Available' },
+              { outline: true, label: 'Available' },
               { color: 'bg-ios-blue', label: 'Selected' },
               { color: 'bg-gray-300', label: 'Booked' },
-            ].map(({ color, label }) => (
+            ].map(({ color, label, outline }) => (
               <span key={label} className="flex items-center gap-1 text-[10px] text-gray-400">
-                <span className={`w-2 h-2 rounded-full ${color}`} />
+                <span className={outline ? 'w-2 h-2 rounded-full border-2 border-gray-300 inline-block' : `w-2 h-2 rounded-full ${color}`} />
                 {label}
               </span>
             ))}
