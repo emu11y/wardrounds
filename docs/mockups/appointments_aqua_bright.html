@@ -1,0 +1,240 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WardRounds — Palette Mockup B: Aqua Bright</title>
+<link rel="stylesheet" href="./app.css" />
+<style>
+  /* ── Variant B: leans on the lighter end of the palette — #5BD1D7 (aqua)
+     as the dominant chrome/surface colour, #348498 (mid teal) for contained
+     cards, #004D61 (deep) reserved for nav-active state + text-on-light,
+     #FF502F (pop) reserved strictly for true CTAs. Both #004D61 and #FF502F
+     remain the two "mains" — just balanced differently than Variant A. See
+     ../../WARDROUNDS_PLAN_COLOUR_PALETTE_TRANSITION_2026-07-19.md §3. ── */
+  :root{
+    --chrome-bg: #5BD1D7;
+    --chrome-text: #004D61;
+    --chrome-text-dim: rgba(0,77,97,.65);
+    --card-bg: #348498;
+    --accent: #FF502F;
+    --accent-text: #ffffff;
+    --surface-wash: linear-gradient(160deg, #EAFBFC 0%, #F5FAFB 55%, #ffffff 100%);
+    --active-pill: #004D61;
+    --active-pill-text: #ffffff;
+    --avatar-bg: #004D61;
+    --avatar-text: #ffffff;
+  }
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif;background:var(--surface-wash);min-height:100vh;}
+  .mockup-banner{background:#1c1c1e;color:#fff;font-size:12px;padding:10px 16px;text-align:center;line-height:1.5;}
+  .mockup-banner b{color:#5BD1D7;}
+  .chrome{background:var(--chrome-bg);color:var(--chrome-text);}
+  .chrome-dim{color:var(--chrome-text-dim);}
+  .card-on-chrome{background:var(--card-bg);}
+  .accent-bg{background:var(--accent);}
+  .accent-text{color:var(--accent);}
+  .active-pill{background:var(--active-pill);color:var(--active-pill-text);}
+  .avatar-chip{background:var(--avatar-bg);color:var(--avatar-text);}
+  .layout{display:flex;gap:12px;padding:12px;align-items:flex-start;max-width:1180px;margin:0 auto;}
+  .icon{width:16px;height:16px;flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<div class="mockup-banner">MOCKUP — <b>Variant B: Aqua Bright</b> — #5BD1D7 as dominant light chrome, #004D61 for nav-active/text, #FF502F reserved for true CTAs only · static, non-interactive · see WARDROUNDS_PLAN_COLOUR_PALETTE_TRANSITION_2026-07-19.md</div>
+
+<div class="layout">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="chrome rounded-2xl shadow-xl flex flex-col" style="width:224px;flex-shrink:0;">
+    <div class="flex items-center gap-3 p-4" style="border-bottom:1px solid rgba(0,77,97,.14);">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center avatar-chip" style="font-weight:700;">W</div>
+      <div>
+        <p class="font-bold text-sm leading-tight">WardRounds</p>
+        <p class="text-xs chrome-dim leading-tight">Clinical Tracker</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1">
+      <div class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl active-pill text-sm font-medium">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <span class="flex-1 text-left">Inpatient</span>
+        <svg class="icon" style="width:12px;height:12px;transform:rotate(180deg)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="pl-3 space-y-0.5 pt-1 pb-1">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium chrome-dim">
+          <svg class="icon" style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Inpatient Dashboard
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium chrome-dim">
+          <svg class="icon" style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M12 21v-2a4 4 0 0 0-4-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3a4 4 0 0 1 4 4"/></svg>
+          Admit Patient
+        </div>
+      </div>
+
+      <div class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-medium" style="color:var(--chrome-text);">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20a6 6 0 0 0-12 0"/><circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>
+        <span class="flex-1 text-left">Outpatient</span>
+        <svg class="icon" style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="pl-3 space-y-0.5 pt-1 pb-1">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium chrome-dim">
+          <svg class="icon" style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Outpatient Dashboard
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium" style="background:var(--active-pill);color:var(--active-pill-text);">
+          <svg class="icon" style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Appointments
+        </div>
+      </div>
+
+      <div class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-medium chrome-dim">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Patients
+      </div>
+    </nav>
+
+    <div class="px-3 pt-3 pb-4" style="border-top:1px solid rgba(0,77,97,.14);">
+      <div class="rounded-2xl overflow-hidden card-on-chrome shadow-lg">
+        <div class="w-full flex items-center gap-3 px-3 py-2.5">
+          <div class="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0" style="background:#5BD1D7;">
+            <span class="text-xl font-bold" style="color:#004D61;">E</span>
+          </div>
+          <div class="text-left flex-1 min-w-0">
+            <p class="text-sm font-semibold leading-tight" style="color:#fff;">Dr. Ebrahim Yusuf</p>
+            <p class="text-xs" style="color:rgba(255,255,255,.7);">Admin</p>
+          </div>
+          <svg class="icon" style="width:14px;height:14px;color:rgba(255,255,255,.7)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,.16);">
+          <div class="space-y-0.5 px-2 pb-2 pt-1.5 mx-2">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium" style="color:rgba(255,255,255,.92);">
+              <svg class="icon" style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              Analytics
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium" style="color:rgba(255,255,255,.92);">
+              <svg class="icon" style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Settings
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium" style="color:#ffcabb;">
+              <svg class="icon" style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <div class="flex-1 min-w-0 space-y-4">
+
+    <!-- Top header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold" style="color:#0f1f24;">Appointments</h1>
+        <p class="text-sm" style="color:#597078;">Dr. Ebrahim Yusuf</p>
+      </div>
+      <button class="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-white text-sm font-semibold shadow-ios-card accent-bg">
+        <svg class="icon" style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Visit
+      </button>
+    </div>
+
+    <!-- Doctor dropdown -->
+    <div>
+      <p class="text-[10px] font-bold uppercase tracking-widest mb-2" style="color:#7ba3ab;">Doctor</p>
+      <button class="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-white border shadow-ios-card text-sm font-semibold" style="width:288px;color:#0f1f24;border-color:#cdeef0;">
+        <span>Dr. Ebrahim Yusuf</span>
+        <svg class="icon" style="width:14px;height:14px;color:#7ba3ab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    </div>
+
+    <!-- Calendar header -->
+    <div class="flex items-center justify-between rounded-2xl bg-white border shadow-ios-card px-4 py-2.5" style="border-color:#cdeef0;">
+      <div class="flex items-center gap-2">
+        <button class="px-3 py-1.5 rounded-xl text-xs font-semibold" style="color:#004D61;background:#DFF6F7;">Today</button>
+        <button class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:#F0FBFC;">
+          <svg class="icon" style="width:14px;height:14px;color:#348498" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:#F0FBFC;">
+          <svg class="icon" style="width:14px;height:14px;color:#348498" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <span class="text-sm font-semibold ml-1" style="color:#0f1f24;">13 – 19 Jul 2026</span>
+      </div>
+      <div class="flex rounded-xl p-0.5" style="background:#F0FBFC;">
+        <span class="px-3 py-1 rounded-lg text-xs font-medium" style="color:#597078;">Day</span>
+        <span class="px-3 py-1 rounded-lg text-xs font-semibold text-white" style="background:var(--active-pill);">Week</span>
+        <span class="px-3 py-1 rounded-lg text-xs font-medium" style="color:#597078;">Month</span>
+      </div>
+    </div>
+
+    <!-- Week grid + rail -->
+    <div class="flex gap-4 items-start">
+      <div class="flex-1 min-w-0 border rounded-2xl bg-white/80 p-3" style="border-color:#cdeef0;">
+
+        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 pb-2 mb-2" style="border-bottom:1px solid #eafbfc;">
+          <span class="flex items-center gap-1 text-[9px]" style="color:#597078;"><span class="w-1.5 h-1.5 rounded-full" style="background:#4ade80;"></span>RSVP'd</span>
+          <span class="flex items-center gap-1 text-[9px]" style="color:#597078;"><span class="w-1.5 h-1.5 rounded-full" style="background:#fbbf24;"></span>No RSVP</span>
+          <span class="flex items-center gap-1 text-[9px]" style="color:#597078;"><span class="w-1.5 h-1.5 rounded-full" style="background:#f87171;"></span>Blocked</span>
+          <span class="flex items-center gap-1 text-[9px]" style="color:#597078;"><span class="w-1.5 h-1.5 rounded-full" style="background:#f472b6;"></span>Seen</span>
+          <span class="flex items-center gap-1 text-[9px]" style="color:#597078;"><span class="w-1.5 h-1.5 rounded-full" style="background:#c084fc;"></span>Other booking</span>
+        </div>
+
+        <div class="grid grid-cols-7 gap-1.5">
+          <!-- Mon (selected) -->
+          <div class="min-w-0">
+            <div class="w-full text-center rounded-xl py-1 mb-1.5" style="background:var(--active-pill);color:var(--active-pill-text);">
+              <span class="block text-[9px] font-medium" style="opacity:.85;">Mon</span>
+              <span class="block text-sm font-semibold leading-tight">13</span>
+            </div>
+            <div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;">
+              <div class="flex gap-1 min-w-0">
+                <div class="flex flex-col items-center flex-shrink-0"><span class="w-1 h-1 rounded-full mt-[3px]" style="background:#fbbf24;"></span><span class="w-px flex-1" style="background:rgba(0,77,97,.12);min-height:8px;"></span></div>
+                <span class="text-[8px] font-semibold" style="color:#0f1f24;">9:30<br/>am</span>
+              </div>
+              <div class="flex gap-1 min-w-0">
+                <div class="flex flex-col items-center flex-shrink-0"><span class="w-1 h-1 rounded-full mt-[3px]" style="background:#f87171;"></span></div>
+                <span class="text-[8px] font-semibold" style="color:#0f1f24;">1<br/>pm</span>
+              </div>
+            </div>
+          </div>
+          <!-- Tue..Sun -->
+          <div class="min-w-0">
+            <div class="w-full text-center rounded-xl py-1 mb-1.5" style="color:#597078;"><span class="block text-[9px] font-medium" style="opacity:.85;">Tue</span><span class="block text-sm font-semibold leading-tight">14</span></div>
+            <div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;">
+              <div class="flex gap-1 min-w-0"><div class="flex flex-col items-center flex-shrink-0"><span class="w-1 h-1 rounded-full mt-[3px]" style="background:#4ade80;"></span></div><span class="text-[8px] font-semibold" style="color:#0f1f24;">8<br/>am</span></div>
+            </div>
+          </div>
+          <div class="min-w-0"><div class="w-full text-center rounded-xl py-1 mb-1.5" style="color:#597078;"><span class="block text-[9px] font-medium" style="opacity:.85;">Wed</span><span class="block text-sm font-semibold leading-tight">15</span></div><div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;"></div></div>
+          <div class="min-w-0"><div class="w-full text-center rounded-xl py-1 mb-1.5" style="color:#597078;"><span class="block text-[9px] font-medium" style="opacity:.85;">Thu</span><span class="block text-sm font-semibold leading-tight">16</span></div><div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;"></div></div>
+          <div class="min-w-0"><div class="w-full text-center rounded-xl py-1 mb-1.5" style="color:#597078;"><span class="block text-[9px] font-medium" style="opacity:.85;">Fri</span><span class="block text-sm font-semibold leading-tight">17</span></div><div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;"></div></div>
+          <div class="min-w-0"><div class="w-full text-center rounded-xl py-1 mb-1.5" style="color:#597078;"><span class="block text-[9px] font-medium" style="opacity:.85;">Sat</span><span class="block text-sm font-semibold leading-tight">18</span></div><div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;"></div></div>
+          <div class="min-w-0"><div class="w-full text-center rounded-xl py-1 mb-1.5" style="color:#597078;"><span class="block text-[9px] font-medium" style="opacity:.85;">Sun</span><span class="block text-sm font-semibold leading-tight">19</span></div><div class="min-h-[120px] rounded-xl p-1.5 pt-2" style="background:#EAFBFC;"></div></div>
+        </div>
+      </div>
+
+      <!-- Right rail -->
+      <div style="width:224px;flex-shrink:0;" class="space-y-3">
+        <div class="rounded-2xl p-3 bg-white/90 border shadow-ios-card" style="border-color:#cdeef0;">
+          <p class="text-xs font-semibold mb-2" style="color:#0f1f24;">Day summary</p>
+          <div class="flex justify-between text-center">
+            <span><span class="block text-base font-semibold" style="color:#9ca3af;">32</span><span class="block text-[9px]" style="color:#9ca3af;">Free</span></span>
+            <span><span class="block text-base font-semibold" style="color:#d97706;">2</span><span class="block text-[9px]" style="color:#9ca3af;">Booked</span></span>
+            <span><span class="block text-base font-semibold accent-text">1</span><span class="block text-[9px]" style="color:#9ca3af;">Blocked</span></span>
+          </div>
+        </div>
+        <div class="rounded-2xl p-3 bg-white/90 border shadow-ios-card" style="border-color:#cdeef0;">
+          <p class="text-xs font-semibold mb-2" style="color:#0f1f24;">Day's agenda</p>
+          <div class="space-y-1.5">
+            <span class="flex items-center gap-1.5 text-[11px]" style="color:#0f1f24;"><span class="w-1.5 h-1.5 rounded-full" style="background:#fbbf24;"></span><span style="color:#9ca3af;">9:30 AM</span> Jane Doe</span>
+            <span class="flex items-center gap-1.5 text-[11px]" style="color:#0f1f24;"><span class="w-1.5 h-1.5 rounded-full" style="background:#f87171;"></span><span style="color:#9ca3af;">1:00 PM</span> Theatre list</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
