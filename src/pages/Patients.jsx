@@ -1071,7 +1071,7 @@ export default function Patients() {
                                         <div className="flex gap-2">
                                           {permissions?.can_view_revenue === true && (
                                             <button
-                                              onClick={() => setInvoiceAdmission(adm)}
+                                              onClick={() => setInvoiceAdmission({ ...adm, patients: patient })}
                                               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-ios-blue bg-blue-50 hover:bg-blue-100 transition-colors"
                                             >
                                               <Receipt size={12} /> Invoice
@@ -1270,7 +1270,7 @@ export default function Patients() {
                                         <div className="flex gap-2">
                                           {permissions?.can_view_revenue === true && (
                                             <button
-                                              onClick={() => setInvoiceAdmission({ ...visit, admission_date: visit.visit_date })}
+                                              onClick={() => setInvoiceAdmission({ ...visit, admission_date: visit.visit_date, patients: patient })}
                                               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold text-ios-blue bg-blue-50 hover:bg-blue-100 transition-colors"
                                             >
                                               <Receipt size={12} /> Invoice
