@@ -53,10 +53,65 @@ export default function InvoiceModal({ admission, onClose }) {
     const clean = s => (s || '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_')
     const parts = [clean(patientName), clean(practiceName), 'Invoice'].filter(Boolean)
     const filename = parts.join('_') || 'Invoice'
-    const prevTitle = document.title
-    document.title = filename
-    window.print()
-    setTimeout(() => { document.title = prevTitle }, 500)
+
+    const sheet = document.querySelector('.invoice-for-print')
+    if (!sheet) { window.print(); return }
+
+    // Print inside an isolated iframe rather than the live DOM. In the live page the
+    // invoice sits under the app's fixed / scrolling / transformed wrappers, which clip
+    // its footer and pin it to an on-screen-sized card no matter what @media print says.
+    // The iframe makes the invoice the only element on the page → a clean full-width A4,
+    // nothing cropped, identical from desktop or mobile.
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    // A4 content width (~794px @96dpi) so the invoice lays out correctly; kept off-screen.
+    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;'
+    document.body.appendChild(iframe)
+
+    const idoc = iframe.contentDocument || iframe.contentWindow.document
+    // Carry over the app's compiled Tailwind + globals so the invoice keeps its styling.
+    const headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(n => n.outerHTML).join('\n')
+    // Snapshot the rendered invoice, minus the on-screen control bar.
+    const clone = sheet.cloneNode(true)
+    clone.querySelectorAll('.no-print').forEach(n => n.remove())
+
+    idoc.open()
+    idoc.write(
+      '<!doctype html><html><head><meta charset="utf-8">' +
+      '<base href="' + document.baseURI + '">' +
+      headStyles +
+      '<style>' +
+        '@page{size:A4;margin:12mm;}' +
+        'html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+        '.invoice-for-print{position:static!important;width:100%!important;max-width:none!important;' +
+          'max-height:none!important;margin:0!important;box-shadow:none!important;border-radius:0!important;' +
+          'overflow:visible!important;display:block!important;}' +
+        '.invoice-scroll-body{overflow:visible!important;max-height:none!important;height:auto!important;}' +
+      '</style></head><body>' + clone.outerHTML + '</body></html>'
+    )
+    idoc.close()
+
+    let done = false
+    const doPrint = () => {
+      if (done) return
+      done = true
+      const prevTitle = document.title
+      document.title = filename
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+      setTimeout(() => { document.title = prevTitle; iframe.remove() }, 1000)
+    }
+    // Wait for the logo/images to load so they aren't blank in the print, with a fallback.
+    const imgs = Array.from(idoc.images || [])
+    let pending = imgs.filter(im => !im.complete).length
+    if (pending > 0) {
+      const tick = () => { if (--pending <= 0) doPrint() }
+      imgs.forEach(im => { if (!im.complete) { im.onload = tick; im.onerror = tick } })
+      setTimeout(doPrint, 1500)
+    } else {
+      setTimeout(doPrint, 300)
+    }
   }
 
   const wardLines = wardBillingLines(admission)
