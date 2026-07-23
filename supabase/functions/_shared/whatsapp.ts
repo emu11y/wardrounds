@@ -11,9 +11,13 @@
 // WHATSAPP_PHONE_NUMBER_ID (test number id on TEST, real number id on PROD).
 //
 // Templates (Meta WhatsApp Manager, category Utility, language en) share the
-// variable order:
+// variable order (v2, RSVP revision):
 //   {{1}} patient first name · {{2}} practice name · {{3}} date · {{4}} time
-//   {{5}} doctor · {{6}} location · ({{7}} staff note — appt_manual only)
+//   {{5}} doctor · {{6}} location · {{7}} clinic contact
+//   (appt_manual only: {{7}} staff note, {{8}} clinic contact)
+// Every template carries two quick-reply buttons — [Confirm] and
+// [Need to reschedule] — whose payloads are set PER SEND (CONFIRM:<visit_id> /
+// RESCHED:<visit_id>) and come back via the whatsapp-webhook edge function.
 
 import { fmtDate, fmtTimeLabel } from "./apptEmail.ts";
 import type { ApptKind, TeamBranding } from "./apptEmail.ts";
@@ -52,7 +56,8 @@ export function waParam(value: unknown, fallback = "-"): string {
   return (s || fallback).slice(0, 512);
 }
 
-// Ordered {{1}}…{{6}} params from the same data buildAppointmentEmail consumes.
+// Ordered {{1}}…{{7}} params from the same data buildAppointmentEmail consumes.
+// {{7}} = clinic contact (practice phone → team phone → practice email).
 export function buildApptWaParams(
   { patientFirstName, team, dateStr, timeLabel, doctorName, doctorTitle, hospitalName, hospitalAddress }: {
     patientFirstName?: string | null;
@@ -76,7 +81,18 @@ export function buildApptWaParams(
     waParam(timeLabel, "the scheduled time"),
     waParam(doctor, "your doctor"),
     waParam(location, "the clinic"),
+    waParam(
+      team?.practice_phone || team?.phone || team?.practice_email,
+      "your clinic",
+    ),
   ];
+}
+
+// RSVP quick-reply payloads for a visit — order matches the template buttons
+// (index 0 = Confirm, index 1 = Need to reschedule). Decoded by whatsapp-webhook.
+export function buildRsvpPayloads(visitId?: string | null): string[] {
+  const id = visitId || "-";
+  return [`CONFIRM:${id}`, `RESCHED:${id}`];
 }
 
 export { fmtDate, fmtTimeLabel };
@@ -85,7 +101,12 @@ export type { ApptKind };
 // Send one pre-approved template message. "Safe" contract (same as the email
 // senders): never throws — always resolves { ok, wamid?, error? }.
 export async function sendWhatsAppTemplate(
-  { to, template, params }: { to: string; template: string; params: string[] },
+  { to, template, params, buttonPayloads }: {
+    to: string;
+    template: string;
+    params: string[];
+    buttonPayloads?: string[];
+  },
 ): Promise<{ ok: boolean; wamid: string | null; error?: string }> {
   const token = Deno.env.get("WHATSAPP_TOKEN");
   const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
@@ -108,10 +129,20 @@ export async function sendWhatsAppTemplate(
           template: {
             name: template,
             language: { code: "en" },
-            components: [{
-              type: "body",
-              parameters: params.map((p) => ({ type: "text", text: p })),
-            }],
+            components: [
+              {
+                type: "body",
+                parameters: params.map((p) => ({ type: "text", text: p })),
+              },
+              // Templates with quick-reply buttons REQUIRE a payload per button
+              // at send time (the payload is what the webhook receives back).
+              ...(buttonPayloads ?? []).map((payload, i) => ({
+                type: "button",
+                sub_type: "quick_reply",
+                index: String(i),
+                parameters: [{ type: "payload", payload }],
+              })),
+            ],
           },
         }),
       },

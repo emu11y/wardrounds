@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { LINKS } from './LandingNav'
 import { scrollToHash } from './scrollToHash'
 import { ArrowUp } from 'lucide-react'
@@ -58,6 +59,12 @@ export default function Footer({ openAuth, lenisRef }) {
             WardRounds is a personal billing and practice-management record. It is not an EMR and
             stores no medical records — your patients' clinical data stays where it belongs.
           </p>
+          <Link
+            to="/privacy"
+            className="mt-4 block text-sm text-slate-400 transition-colors hover:text-white"
+          >
+            Privacy Policy
+          </Link>
         </div>
       </div>
 

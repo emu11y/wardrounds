@@ -21,3 +21,11 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/send-reminders/deno.json"
 entrypoint = "./functions/send-reminders/index.ts"
+
+# Public endpoint for Meta's WhatsApp webhook (RSVP button taps). No JWT —
+# authenticity is enforced in-function via X-Hub-Signature-256 (app secret).
+[functions.whatsapp-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/whatsapp-webhook/deno.json"
+entrypoint = "./functions/whatsapp-webhook/index.ts"

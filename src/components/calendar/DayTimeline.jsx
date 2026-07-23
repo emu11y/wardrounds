@@ -17,7 +17,7 @@ import SlotGap from './SlotGap'
 const STATUS_ICONS = {
   confirmed: <Check size={12} className="flex-shrink-0" />,
   pending: <HelpCircle size={12} className="flex-shrink-0" />,
-  declined: <HelpCircle size={12} className="flex-shrink-0" />,
+  reschedule: <HelpCircle size={12} className="flex-shrink-0" />,
 }
 
 function patientName(p) {

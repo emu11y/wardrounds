@@ -29,6 +29,7 @@ const AuthCallback   = lazy(() => import('./pages/AuthCallback'))
 const ResetPassword  = lazy(() => import('./pages/ResetPassword'))
 const Landing        = lazy(() => import('./pages/landing/Landing'))
 const MobileLanding  = lazy(() => import('./pages/landing/MobileLanding'))
+const Privacy        = lazy(() => import('./pages/legal/Privacy'))
 
 // Decided once at load: touch / coarse-pointer devices (phones, tablets) get the
 // lightweight MobileLanding; desktop keeps the animated Landing. Branching here
@@ -161,6 +162,10 @@ function AppInner() {
         <Route path="/appointments" element={<ProtectedLayout><PageGuard permKey="view_appointments"><MyAppointments /></PageGuard></ProtectedLayout>} />
         <Route path="/analytics" element={<ProtectedLayout><PageGuard permKey="view_analytics"><Analytics /></PageGuard></ProtectedLayout>} />
         <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
+        {/* Public + ungated on purpose: Meta requires a publicly fetchable
+            Privacy Policy URL to publish the app, and patients receiving
+            WhatsApp reminders must be able to read it without an account. */}
+        <Route path="/privacy" element={<Privacy />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<Navigate to="/" replace />} />

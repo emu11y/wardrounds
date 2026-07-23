@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Wallet, Building2, Activity, Lock, Check, X, Download, FileSpreadsheet,
   Stethoscope, ArrowRight, ArrowUp, Bell, TrendingUp, FileCheck, Plus, Users, Pencil,
@@ -1111,6 +1112,9 @@ export default function MobileLanding() {
             WardRounds is a personal billing and practice-management record. It is not an EMR and
             stores no medical records — your patients' clinical data stays where it belongs.
           </p>
+          <Link to="/privacy" className="mt-4 block text-xs font-medium text-slate-400 active:text-white">
+            Privacy Policy
+          </Link>
         </div>
 
         <div className="mt-8 flex items-center justify-between border-t border-slate-800 pt-5">

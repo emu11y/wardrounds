@@ -1,6 +1,6 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
-import { sendWhatsAppTemplate, toE164Kenya, WA_TEMPLATES } from "../_shared/whatsapp.ts";
+import { buildRsvpPayloads, sendWhatsAppTemplate, toE164Kenya, WA_TEMPLATES } from "../_shared/whatsapp.ts";
 
 // Browser-facing WhatsApp template sender (mirrors send-email, plus auth +
 // gating + audit). Callable via supabase.functions.invoke("send-whatsapp",
@@ -80,7 +80,14 @@ export default {
     }
 
     // ── Send + audit ─────────────────────────────────────────────────────────
-    const res = await sendWhatsAppTemplate({ to: recipient, template, params });
+    // RSVP button payloads are derived server-side from visitId (client never
+    // builds them). Missing visitId → "-" sentinel the webhook ignores.
+    const res = await sendWhatsAppTemplate({
+      to: recipient,
+      template,
+      params,
+      buttonPayloads: buildRsvpPayloads(visitId),
+    });
 
     const { error: logError } = await ctx.supabaseAdmin.from("message_log").insert({
       team_id: profile.team_id,

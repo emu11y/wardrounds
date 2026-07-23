@@ -184,7 +184,7 @@ export default function ReminderComposeModal({ visit, onClose, notify }) {
               </div>
               {viaWa && waAllowed && (
                 <p className="text-[11px] text-gray-400 mt-1">
-                  WhatsApp sends a fixed, pre-approved template with the appointment details — your message above is included as a short note. Patients can't reply on WhatsApp; the template tells them to contact the clinic directly.
+                  WhatsApp sends a fixed, pre-approved template with the appointment details — your message above is included as a short note. Patients tap Confirm or Need to reschedule; their response is recorded automatically. For anything else the template tells them to contact the clinic directly.
                 </p>
               )}
             </div>

@@ -7,7 +7,7 @@ import { weekDates, toHM, fmtSlotCompact } from './calendarUtils'
 
 // Fixed display order for the legend — only keys actually present in the
 // current week are shown, so the legend stays short on a quiet week.
-const LEGEND_ORDER = ['confirmed', 'pending', 'declined', 'blocked', 'seen', 'adhoc']
+const LEGEND_ORDER = ['confirmed', 'pending', 'reschedule', 'blocked', 'seen', 'adhoc']
 
 export default function WeekGrid({ date, schedule, loading, onSelectDate }) {
   const days = weekDates(date)

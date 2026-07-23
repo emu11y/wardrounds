@@ -1465,7 +1465,9 @@ export async function fetchBlockedSlots(teamId, doctorId, fromDate) {
 export async function fetchUpcomingPatientVisits(teamId, patientId, fromDate) {
   const { data, error } = await supabase
     .from('outpatient_visits')
-    .select('id, visit_date, visit_time, status, is_adhoc, doctor_id, hospitals(id, name)')
+    // rsvp_status is needed by visitStatusKey() so the booking-search dots match
+    // the calendar (green = RSVP'd) rather than always reading amber.
+    .select('id, visit_date, visit_time, status, is_adhoc, doctor_id, rsvp_status, hospitals(id, name)')
     .eq('team_id', teamId)
     .eq('patient_id', patientId)
     .gte('visit_date', fromDate)

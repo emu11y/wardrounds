@@ -15,9 +15,13 @@ import { supabase } from './supabaseClient'
  * window must use a pre-approved template. Manual "free text" reminders send
  * `appt_manual` with the staff note as {{7}}.
  *
- * Templates share the variable order:
+ * Templates share the variable order (v2, RSVP revision):
  *   {{1}} patient first name · {{2}} practice name · {{3}} date · {{4}} time
- *   {{5}} doctor · {{6}} location · ({{7}} staff note — appt_manual only)
+ *   {{5}} doctor · {{6}} location · {{7}} clinic contact
+ *   (appt_manual only: {{7}} staff note, {{8}} clinic contact)
+ * Every template carries [Confirm] / [Need to reschedule] quick-reply buttons;
+ * their per-send payloads (CONFIRM:<visit_id> / RESCHED:<visit_id>) are built
+ * SERVER-SIDE in the send-whatsapp function from visitId — never here.
  */
 
 // kind → approved template name (mirror of WA_TEMPLATES in whatsapp.ts).
@@ -60,7 +64,8 @@ export function waParam(value, fallback = '-') {
   return (s || fallback).slice(0, 512)
 }
 
-// Ordered {{1}}…{{6}} params from the same data buildAppointmentEmail consumes.
+// Ordered {{1}}…{{7}} params from the same data buildAppointmentEmail consumes.
+// {{7}} = clinic contact (practice phone → team phone → practice email).
 export function buildApptWaParams({
   patientFirstName, team, dateStr, timeLabel,
   doctorName, doctorTitle, hospitalName, hospitalAddress,
@@ -76,6 +81,10 @@ export function buildApptWaParams({
     waParam(timeLabel, 'the scheduled time'),
     waParam(doctor, 'your doctor'),
     waParam(location, 'the clinic'),
+    waParam(
+      team?.practice_phone || team?.phone || team?.practice_email,
+      'your clinic',
+    ),
   ]
 }
 
@@ -110,7 +119,9 @@ export async function sendAppointmentWhatsAppSafe({
   if (!to || !optIn) return { ok: false, skipped: true }
   try {
     const params = buildApptWaParams(apptFields)
-    if (kind === 'manual') params.push(waParam(staffNote, '-'))
+    // appt_manual: staff note is {{7}}, contact shifts to {{8}} — insert the
+    // note BEFORE the contact param the builder appended last.
+    if (kind === 'manual') params.splice(6, 0, waParam(staffNote, '-'))
     await sendWhatsApp({ to, kind, params, patientId, visitId })
     return { ok: true }
   } catch (e) {

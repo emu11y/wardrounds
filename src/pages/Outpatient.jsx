@@ -25,6 +25,7 @@ import BookedSlotModal from '../components/calendar/BookedSlotModal'
 import { monthBounds, groupBlockedRanges } from '../components/calendar/calendarUtils'
 import { calcAge, formatDate, todayStr, darken, formatKES } from '../lib/utils'
 import { getOutpatientStatusStyle } from '../lib/statusBadges'
+import RsvpBadge from '../components/RsvpBadge'
 
 function groupVisitsByPatient(visits) {
   const map = new Map()
@@ -838,6 +839,10 @@ export default function Outpatient() {
                       {visit.hospitals?.name && <span>{visit.hospitals.name}</span>}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Patient RSVP from a WhatsApp quick-reply tap. Renders
+                          nothing when rsvp_status is null (no reply yet, or the
+                          team has WhatsApp off) — see components/RsvpBadge.jsx. */}
+                      <RsvpBadge rsvpStatus={visit.rsvp_status} />
                       {visit.visit_date && (
                         <div className="flex items-center gap-1">
                           <Calendar size={11} className="text-white/70 flex-shrink-0" />

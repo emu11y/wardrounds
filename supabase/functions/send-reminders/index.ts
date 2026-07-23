@@ -2,7 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { buildAppointmentEmail, fmtTimeLabel } from "../_shared/apptEmail.ts";
 import type { ApptKind } from "../_shared/apptEmail.ts";
-import { buildApptWaParams, sendWhatsAppTemplate, toE164Kenya, WA_TEMPLATES } from "../_shared/whatsapp.ts";
+import { buildApptWaParams, buildRsvpPayloads, sendWhatsAppTemplate, toE164Kenya, WA_TEMPLATES } from "../_shared/whatsapp.ts";
 
 // Automatic appointment reminders — invoked on a schedule (pg_cron + pg_net).
 //
@@ -218,7 +218,12 @@ export default {
             hospitalAddress: v.hospitals?.address,
           });
 
-          const waRes = await sendWhatsAppTemplate({ to: waTo!, template, params });
+          const waRes = await sendWhatsAppTemplate({
+            to: waTo!,
+            template,
+            params,
+            buttonPayloads: buildRsvpPayloads(v.id),
+          });
 
           if (v.teams?.id) {
             const { error: logError } = await ctx.supabaseAdmin.from("message_log").insert({
