@@ -185,6 +185,7 @@ export default function InvoiceModal({ admission, onClose }) {
                   {patient?.first_name} {patient?.last_name}
                 </p>
                 <p className="text-sm text-gray-500 mt-0.5">DOB: {fmt(patient?.date_of_birth)}</p>
+                <p className="text-sm text-gray-500">IP No: {admission.patient_hospital_id || '—'}</p>
                 {patient?.insurance_name && (
                   <p className="text-sm text-gray-500">Insurance: {patient.insurance_name}</p>
                 )}
