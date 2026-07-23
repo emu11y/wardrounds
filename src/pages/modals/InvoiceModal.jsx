@@ -75,7 +75,7 @@ export default function InvoiceModal({ admission, onClose }) {
   return (
     <>
     <Backdrop zIndex="z-[60]" />
-    <div className="fixed inset-0 z-[61] overflow-y-auto">
+    <div className="invoice-print-viewport fixed inset-0 z-[61] overflow-y-auto">
 
       {/* Invoice sheet */}
       <div className="invoice-for-print bg-white w-full max-w-2xl mx-auto my-16 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">

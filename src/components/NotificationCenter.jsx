@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Backdrop from './Backdrop'
 import { X, Bell, UserPlus, ArrowRight, LogOut, AlertCircle } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
+import { parseEventTimestamp } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 function eventIcon(type) {
@@ -14,13 +15,17 @@ function eventIcon(type) {
 }
 
 function formatTime(ts) {
-  const d = new Date(ts)
+  // timeline_events.timestamp comes back from Postgres tz-less but holds a UTC
+  // instant — parse it through the shared helper so a Nairobi (UTC+3) browser
+  // doesn't reinterpret it as local time and overshoot by 3 hours.
+  const d = parseEventTimestamp(ts)
+  if (!d) return ''
   const now = new Date()
   const diff = now - d
   if (diff < 60000) return 'Just now'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-  return d.toLocaleDateString()
+  return d.toLocaleDateString('en-GB', { timeZone: 'Africa/Nairobi' })
 }
 
 const LS_CLEARED = 'wr_notifications_cleared_ids'
