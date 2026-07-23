@@ -75,10 +75,10 @@ export default function InvoiceModal({ admission, onClose }) {
   return (
     <>
     <Backdrop zIndex="z-[60]" />
-    <div className="invoice-print-viewport fixed inset-0 z-[61] overflow-y-auto">
+    <div className="invoice-print-viewport fixed inset-0 z-[61] overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
 
       {/* Invoice sheet */}
-      <div className="invoice-for-print bg-white w-full max-w-2xl mx-auto my-16 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">
+      <div className="invoice-for-print bg-white w-full max-w-2xl mx-auto mt-4 mb-16 sm:my-16 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">
 
         <div className="no-print flex-shrink-0 flex justify-end gap-2 p-3 bg-white/80 backdrop-blur-xl border-b border-white/60">
           <button
