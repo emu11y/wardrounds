@@ -122,7 +122,7 @@ export async function fetchAllAdmissions(teamId) {
     .from('admissions')
     .select(`
       *,
-      patients(id, first_name, last_name, date_of_birth, insurance_name),
+      patients(id, first_name, last_name, date_of_birth, insurance_name, phone, email),
       hospitals(id, name, location, color, hospital_services(id, service_name, price_per_day)),
       timeline_events(id, event_type, ward, timestamp, notes),
       admission_services(id, service_name, price, billing_type, added_at, service_at)

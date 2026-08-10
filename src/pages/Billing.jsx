@@ -175,6 +175,29 @@ function BillingCard({ admission, canMarkPaid, expanded, onToggle, onSaved, noti
       <div className={`transition-all duration-300 overflow-hidden ${expanded ? 'max-h-[3000px]' : 'max-h-0'}`}>
         <div className="p-4 space-y-3" style={{ backgroundColor: accentColor + '08' }}>
 
+          {/* PATIENT DETAILS sub-card */}
+          <SubCard accentColor={accentColor} title="PATIENT DETAILS">
+            <div className="pt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+              {[
+                ['UHID / IP No.', admission.patient_hospital_id || '—'],
+                ['Full name', name],
+                ['Date of birth', patient?.date_of_birth ? `${formatDate(patient.date_of_birth)}${age !== null ? ` · ${age} yrs` : ''}` : '—'],
+                ['Phone', patient?.phone || '—'],
+                ['Email', patient?.email || '—'],
+                ['Insurance', patient?.insurance_name || '—'],
+                ['Hospital', admission.hospitals?.name || '—'],
+                ['Ward', admission.ward || '—'],
+                ['Admitted', admission.admission_date ? formatDate(admission.admission_date) : '—'],
+                ['Discharged', admission.discharge_date ? formatDate(admission.discharge_date) : '—'],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+                  <p className="text-[13px] font-medium text-gray-800 break-words">{value}</p>
+                </div>
+              ))}
+            </div>
+          </SubCard>
+
           {/* CHARGES sub-card */}
           <SubCard
             accentColor={accentColor}
@@ -416,6 +439,7 @@ export default function Billing() {
     const rec = r.invoice_record
     return {
       'Patient': [r.patients?.first_name, r.patients?.last_name].filter(Boolean).join(' ') || 'Unknown',
+      'UHID / IP No.': r.patient_hospital_id || '',
       'Status': getStatusBadgeStyle(r.status).text,
       'Hospital': r.hospitals?.name || '',
       'Ward': r.ward || '',
