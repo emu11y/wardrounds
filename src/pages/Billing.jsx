@@ -8,7 +8,7 @@ import {
   BILLING_MODES, BILLING_MODE_LABEL as MODE_LABEL,
   billingStatusKey as billKey, BILLING_STATUS_LABEL as BILL_LABEL,
 } from '../lib/billing'
-import { formatKES, formatDate, calcAge, darken } from '../lib/utils'
+import { formatKES, formatDate, calcAge, darken, todayStr } from '../lib/utils'
 import { getStatusBadgeStyle } from '../lib/statusBadges'
 import { GLASS_CARD } from '../lib/theme'
 import { printHtml, escapeHtml } from '../lib/print'
@@ -315,6 +315,21 @@ export default function Billing() {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [dischargedToday, setDischargedToday] = useState(false)
+
+  // Mobile UX: any scroll dismisses the filters popover (it's anchored to the pill,
+  // so it would otherwise float detached over the list while scrolling).
+  useEffect(() => {
+    if (!filtersOpen) return
+    const close = () => setFiltersOpen(false)
+    const scroller = document.getElementById('main-scroll')
+    scroller?.addEventListener('scroll', close, { passive: true })
+    window.addEventListener('scroll', close, { passive: true })
+    return () => {
+      scroller?.removeEventListener('scroll', close)
+      window.removeEventListener('scroll', close)
+    }
+  }, [filtersOpen])
 
   const load = useCallback(async () => {
     if (!user?.team_id) return
@@ -362,11 +377,17 @@ export default function Billing() {
 
   // Everything except the bill-status dimension — shared by counts and visible,
   // so the summary chips and filter badges always agree with the other filters.
+  // Discharged-today helper + count (drives the quick "Today" pill).
+  const isDischargedToday = useCallback(r =>
+    r.status === 'discharged' && String(r.discharge_date || '').slice(0, 10) === todayStr(), [])
+  const dischargedTodayCount = useMemo(() => rows.filter(isDischargedToday).length, [rows, isDischargedToday])
+
   const baseFiltered = useMemo(() => rows.filter(r =>
     (hospitalTab === 'all' || r.hospitals?.id === hospitalTab) &&
     (admStatusFilter === 'all' || r.status === admStatusFilter) &&
-    (monthFilter === 'all' || billingMonth(r) === monthFilter)
-  ), [rows, hospitalTab, admStatusFilter, monthFilter])
+    (monthFilter === 'all' || billingMonth(r) === monthFilter) &&
+    (!dischargedToday || isDischargedToday(r))
+  ), [rows, hospitalTab, admStatusFilter, monthFilter, dischargedToday, isDischargedToday])
 
   const counts = useMemo(() => {
     let unbilled = 0, awaiting = 0, paid = 0, outstanding = 0
@@ -457,9 +478,10 @@ export default function Billing() {
   // How many filters are away from their default — shown as a badge on the pill.
   const activeFilterCount =
     (hospitalTab !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) +
-    (admStatusFilter !== 'all' ? 1 : 0) + (monthFilter !== 'all' ? 1 : 0)
+    (admStatusFilter !== 'all' ? 1 : 0) + (monthFilter !== 'all' ? 1 : 0) +
+    (dischargedToday ? 1 : 0)
 
-  const clearFilters = () => { setHospitalTab('all'); setStatusFilter('all'); setAdmStatusFilter('all'); setMonthFilter('all') }
+  const clearFilters = () => { setHospitalTab('all'); setStatusFilter('all'); setAdmStatusFilter('all'); setMonthFilter('all'); setDischargedToday(false) }
 
   const selectCls = 'w-full px-3 py-2 rounded-xl bg-white/70 border border-white/60 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-ios-blue/40'
 
@@ -503,6 +525,19 @@ export default function Billing() {
               placeholder="Search patient or invoice #"
               className="w-full pl-9 pr-3 py-2.5 rounded-2xl bg-white/70 border border-white/60 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-ios-blue/40" />
           </div>
+          {/* Quick filter: patients discharged today */}
+          <button
+            onClick={() => setDischargedToday(v => !v)}
+            title="Show patients discharged today"
+            className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-sm font-semibold shadow-sm transition ${
+              dischargedToday ? 'bg-ios-blue text-white border-ios-blue' : 'bg-white/70 text-gray-700 border-white/60 hover:bg-white'}`}
+          >
+            Today
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+              dischargedToday ? 'bg-white/25 text-white' : 'bg-black/[0.06] text-gray-500'}`}>
+              {dischargedTodayCount}
+            </span>
+          </button>
           <div className="relative flex-shrink-0">
             <button
               onClick={() => setFiltersOpen(o => !o)}
