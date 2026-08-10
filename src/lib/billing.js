@@ -92,6 +92,35 @@ export function wardTotal(admission) {
   return wardBillingLines(admission).reduce((s, l) => s + l.total, 0)
 }
 
+// One-off procedures/tests total for an admission.
+export function admissionServicesTotal(admission) {
+  return (admission.admission_services || []).reduce((s, x) => s + Number(x.price || 0), 0)
+}
+
+// The patient's full system-computed bill: ward-day accrual + one-off services.
+// Shared by the Billing page and Analytics so "total" never drifts between them.
+export function admissionGrandTotal(admission) {
+  return wardTotal(admission) + admissionServicesTotal(admission)
+}
+
+// ── Billing verification (invoice_records) ───────────────────────────────────
+// Canonical billing-mode set (app-enforced; no DB check constraint).
+export const BILLING_MODES = [
+  { key: 'hospital',          label: 'Hospital' },
+  { key: 'direct_patient',    label: 'Direct to patient' },
+  { key: 'invoiced_hospital', label: 'Invoiced to hospital' },
+]
+export const BILLING_MODE_LABEL = Object.fromEntries(BILLING_MODES.map(m => [m.key, m.label]))
+
+// billed? / paid? → one status key. Used by the Billing page (pills, filters,
+// exports) and Analytics (billing charts) — keep them agreeing here.
+export function billingStatusKey(rec) {
+  if (rec?.paid) return 'paid'
+  if (rec?.billed) return 'awaiting'
+  return 'unbilled'
+}
+export const BILLING_STATUS_LABEL = { unbilled: 'Not billed', awaiting: 'Awaiting payment', paid: 'Paid' }
+
 // Team-wide revenue across many admissions for a date range — ward accrual (day-billed,
 // via the same expandSegmentDays used per-admission) plus one-off admission_services charges,
 // matching how InvoiceModal/PatientCard already define a patient's Total (ward + services).

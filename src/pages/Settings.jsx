@@ -2150,6 +2150,7 @@ export default function Settings() {
                             { key: 'can_manage_patients',   label: 'Inpatient',        description: 'Ward rounds & admissions' },
                             { key: 'can_manage_outpatient', label: 'Outpatient',       description: 'Dashboard & appointments' },
                             { key: 'can_view_all_patients', label: 'Patients',         description: 'Patient list & records' },
+                            { key: 'can_edit_billing',      label: 'Billing',          description: 'Discharge billing & payment follow-up' },
                             { key: 'can_view_reports',      label: 'Analytics',        description: 'Reports & analytics' },
                             { key: 'can_access_admin',      label: 'Settings & Admin', description: 'Team settings and admin panel' },
                           ].map(({ key, label, description }) => (
@@ -2187,7 +2188,6 @@ export default function Settings() {
                           {[
                             { key: 'can_discharge',   label: 'Discharge Patients' },
                             { key: 'can_transfer',    label: 'Transfer Patients' },
-                            { key: 'can_edit_billing', label: 'Edit Billing' },
                             { key: 'can_mark_paid',   label: 'Mark as Paid' },
                             { key: 'can_manage_team', label: 'Manage Team' },
                             { key: 'can_view_revenue', label: 'View Revenue Details' },

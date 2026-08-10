@@ -1090,6 +1090,83 @@ export async function dischargePatient(admissionId) {
   }
 }
 
+// ─── BILLING VERIFICATION (post-discharge accounts follow-up) ─────────────────
+
+// Every team's billing-verification rows, keyed for merge onto admissions in the page.
+// Fetched separately (not a PostgREST embed on admissions) so it never depends on the
+// FK relationship being present in the schema cache — the Billing page reuses the
+// existing fetchAllAdmissions() for patient/ward/service data and joins these in JS.
+export async function fetchInvoiceRecords(teamId) {
+  const { data, error } = await supabase
+    .from('invoice_records')
+    .select('*')
+    .eq('team_id', teamId)
+  if (error) throw error
+  return data || []
+}
+
+// Records/updates the billing-verification row for one discharged admission.
+// Check-then-update/insert (not upsert) — mirrors updateUserPermissions, avoiding
+// INSERT-policy violations on an existing row. Only whitelisted fields are written;
+// billed_at / paid_at are stamped on the false→true transition and cleared on true→false.
+export async function upsertInvoiceRecord(admissionId, teamId, patch, actingUser) {
+  const p = patch || {}
+
+  const { data: existing } = await supabase
+    .from('invoice_records')
+    .select('*')
+    .eq('admission_id', admissionId)
+    .maybeSingle()
+
+  const nowIso = new Date().toISOString()
+  const nextBilled = p.billed ?? existing?.billed ?? false
+  const nextPaid   = p.paid   ?? existing?.paid   ?? false
+
+  const fields = {
+    billed: nextBilled,
+    paid:   nextPaid,
+    billing_mode:   p.billing_mode   !== undefined ? (p.billing_mode || null) : (existing?.billing_mode ?? null),
+    invoice_number: p.invoice_number !== undefined ? (p.invoice_number || null) : (existing?.invoice_number ?? null),
+    amount:         p.amount         !== undefined ? (p.amount === '' || p.amount == null ? null : Number(p.amount)) : (existing?.amount ?? null),
+    notes:          p.notes          !== undefined ? (p.notes || null) : (existing?.notes ?? null),
+    // Stamp the moment a flag flips on; clear it when flipped off.
+    billed_at: nextBilled ? (existing?.billed_at || nowIso) : null,
+    paid_at:   nextPaid   ? (existing?.paid_at   || nowIso) : null,
+    updated_by: actingUser?.id ?? null,
+    updated_at: nowIso,
+  }
+
+  let result
+  if (existing) {
+    const { data, error } = await supabase
+      .from('invoice_records')
+      .update(fields)
+      .eq('id', existing.id)
+      .select()
+      .single()
+    if (error) throw error
+    result = data
+  } else {
+    const { data, error } = await supabase
+      .from('invoice_records')
+      .insert({ admission_id: admissionId, team_id: teamId, created_by: actingUser?.id ?? null, ...fields })
+      .select()
+      .single()
+    if (error) throw error
+    result = data
+  }
+
+  await logActivity({
+    user: actingUser,
+    action: 'update_billing',
+    entityType: 'invoice_record',
+    entityId: result.id,
+    details: { admission_id: admissionId, billed: nextBilled, paid: nextPaid, invoice_number: fields.invoice_number },
+  })
+
+  return result
+}
+
 // ─── OUTPATIENT VISITS ────────────────────────────────────────────────────────
 
 export async function fetchOutpatientVisits(teamId) {

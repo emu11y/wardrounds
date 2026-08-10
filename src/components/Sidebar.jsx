@@ -3,7 +3,7 @@ import Backdrop from './Backdrop'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, UserPlus, Stethoscope, BedDouble, CalendarClock,
-  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Lock, Download,
+  BarChart2, Settings, LogOut, Menu, X, ChevronDown, Lock, Download, ReceiptText,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSidebar } from '../context/SidebarContext'
@@ -36,6 +36,7 @@ const navGroups = [
 
 const standaloneItems = [
   { to: '/patients', icon: Users, label: 'Patients', permKey: 'view_patients' },
+  { to: '/billing', icon: ReceiptText, label: 'Billing', permKey: 'view_billing' },
 ]
 
 export default function Sidebar() {

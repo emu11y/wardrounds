@@ -8,8 +8,12 @@ import {
   fetchOutpatientVisitsFiltered,
   fetchHospitals,
   fetchTeamMembers,
+  fetchInvoiceRecords,
 } from '../lib/api'
-import { computeTeamRevenueForRange } from '../lib/billing'
+import {
+  computeTeamRevenueForRange, admissionGrandTotal,
+  billingStatusKey, BILLING_STATUS_LABEL, BILLING_MODE_LABEL,
+} from '../lib/billing'
 import { GLASS_CARD } from '../lib/theme'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -29,7 +33,7 @@ const TOOLTIP_STYLE = {
 }
 const AXIS_TICK = { fontSize: 11, fill: '#64748b' }
 const PRESETS = ['This Month', 'Last Month', 'This Quarter', 'Last Quarter', 'This Year', 'All Time']
-const TABS = ['All', 'Inpatient', 'Outpatient']
+const TABS = ['All', 'Inpatient', 'Outpatient', 'Billing']
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 const pad = n => String(n).padStart(2, '0')
@@ -218,6 +222,7 @@ export default function Analytics() {
   const [hospitals, setHospitals] = useState([])
   const [revenue, setRevenue] = useState({ wardRevenue: 0, serviceRevenue: 0, totalRevenue: 0 })
   const [teamMembers, setTeamMembers] = useState([])
+  const [invoiceRecords, setInvoiceRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadErrors, setLoadErrors] = useState([])
 
@@ -237,7 +242,8 @@ export default function Analytics() {
       fetchOutpatientVisitsFiltered(user.team_id, null, null, dateFrom, dateTo),
       fetchHospitals(user.team_id),
       fetchTeamMembers(user.team_id),
-    ]).then(([admResult, visResult, hospResult, membersResult]) => {
+      fetchInvoiceRecords(user.team_id),
+    ]).then(([admResult, visResult, hospResult, membersResult, invResult]) => {
       const errors = []
 
       if (admResult.status === 'fulfilled') {
@@ -268,6 +274,13 @@ export default function Analytics() {
       } else {
         console.error(membersResult.reason)
         errors.push('Team members')
+      }
+
+      if (invResult.status === 'fulfilled') {
+        setInvoiceRecords(invResult.value || [])
+      } else {
+        console.error(invResult.reason)
+        errors.push('Billing records')
       }
 
       setLoadErrors(errors)
@@ -420,6 +433,73 @@ export default function Analytics() {
       : 0
   , [rebookedStats, uniqueVisitPatients])
 
+  // ── Billing verification (invoice_records ⋈ admissions) ─────────────────────
+  // Same JS-side merge as the Billing page (no PostgREST embed). Operates on the
+  // date-filtered admissions so the tab respects the page's date range.
+  const billingRows = useMemo(() => {
+    const byAdmission = _.keyBy(invoiceRecords, 'admission_id')
+    return allAdmissions.map(a => ({
+      ...a,
+      invoice_record: byAdmission[a.id] || null,
+      _billKey: billingStatusKey(byAdmission[a.id] || null),
+      _sysTotal: admissionGrandTotal(a),
+    }))
+  }, [allAdmissions, invoiceRecords])
+
+  // Effective value of a row: the recorded amount when present, else system total.
+  const billValue = r => (r.invoice_record?.amount != null ? Number(r.invoice_record.amount) : r._sysTotal)
+
+  const billingSummary = useMemo(() => {
+    const s = { unbilled: 0, awaiting: 0, paid: 0, unbilledValue: 0, outstanding: 0, collected: 0 }
+    for (const r of billingRows) {
+      s[r._billKey]++
+      if (r._billKey === 'unbilled') s.unbilledValue += r._sysTotal
+      else if (r._billKey === 'awaiting') s.outstanding += billValue(r)
+      else s.collected += billValue(r)
+    }
+    return s
+  }, [billingRows])
+
+  const billingStatusPie = useMemo(() => [
+    { name: BILLING_STATUS_LABEL.unbilled, value: billingSummary.unbilled, color: '#FF9500' },
+    { name: BILLING_STATUS_LABEL.awaiting, value: billingSummary.awaiting, color: '#007AFF' },
+    { name: BILLING_STATUS_LABEL.paid,     value: billingSummary.paid,     color: '#34C759' },
+  ], [billingSummary])
+
+  const billingModePie = useMemo(() => {
+    const colors = { hospital: '#007AFF', direct_patient: '#34C759', invoiced_hospital: '#AF52DE' }
+    const grouped = _.countBy(billingRows.filter(r => r.invoice_record?.billing_mode), r => r.invoice_record.billing_mode)
+    return Object.entries(grouped).map(([mode, count]) => ({
+      name: BILLING_MODE_LABEL[mode] || mode, value: count, color: colors[mode] || '#8E8E93',
+    }))
+  }, [billingRows])
+
+  const billingByHospital = useMemo(() =>
+    hospitals.map(h => {
+      const rows = billingRows.filter(r => r.hospital_id === h.id)
+      return {
+        name: h.name,
+        'Unbilled (KES)': _.sumBy(rows.filter(r => r._billKey === 'unbilled'), r => r._sysTotal),
+        'Outstanding (KES)': _.sumBy(rows.filter(r => r._billKey === 'awaiting'), billValue),
+        'Collected (KES)': _.sumBy(rows.filter(r => r._billKey === 'paid'), billValue),
+      }
+    })
+  , [hospitals, billingRows])
+
+  const billingByMonth = useMemo(() => {
+    const buckets = buildMonthBuckets(dateFrom, dateTo)
+    const monthOf = r => new Date(r.discharge_date || r.admission_date).toLocaleDateString('en-KE', { month: 'short', year: '2-digit', timeZone: TZ })
+    const grouped = _.groupBy(billingRows, monthOf)
+    return buckets.map(b => {
+      const rows = grouped[b] || []
+      return {
+        month: b,
+        'Outstanding (KES)': _.sumBy(rows.filter(r => r._billKey !== 'paid'), r => r._billKey === 'unbilled' ? r._sysTotal : billValue(r)),
+        'Collected (KES)': _.sumBy(rows.filter(r => r._billKey === 'paid'), billValue),
+      }
+    })
+  }, [billingRows, dateFrom, dateTo])
+
   // ── Export ────────────────────────────────────────────────────────────────────
   function exportToExcel() {
     const wb = XLSX.utils.book_new()
@@ -435,6 +515,12 @@ export default function Analytics() {
       { Metric: 'Unique Outpatient Patients', Value: uniqueOutpatientPatients },
       { Metric: 'Total Outpatient Revenue (KES)', Value: totalOutpatientRevenue },
       { Metric: 'Combined Revenue (KES)', Value: totalInpatientRevenue + totalOutpatientRevenue },
+      { Metric: 'Billing — Not Billed (count)', Value: billingSummary.unbilled },
+      { Metric: 'Billing — Awaiting Payment (count)', Value: billingSummary.awaiting },
+      { Metric: 'Billing — Paid (count)', Value: billingSummary.paid },
+      { Metric: 'Billing — Unbilled Value (KES)', Value: Math.round(billingSummary.unbilledValue) },
+      { Metric: 'Billing — Outstanding (KES)', Value: Math.round(billingSummary.outstanding) },
+      { Metric: 'Billing — Collected (KES)', Value: Math.round(billingSummary.collected) },
     ]), 'Summary')
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
@@ -476,6 +562,23 @@ export default function Analytics() {
         }
       })
     ), 'By Hospital')
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+      billingRows.map(r => ({
+        Patient: `${r.patients?.first_name || ''} ${r.patients?.last_name || ''}`.trim(),
+        Hospital: r.hospitals?.name || '',
+        Ward: r.ward || '',
+        Status: r.status,
+        'Discharge Date': r.discharge_date || '',
+        'System Total (KES)': Math.round(r._sysTotal),
+        Billed: r.invoice_record?.billed ? 'Yes' : 'No',
+        Mode: r.invoice_record?.billing_mode ? BILLING_MODE_LABEL[r.invoice_record.billing_mode] : '',
+        'Invoice #': r.invoice_record?.invoice_number || '',
+        'Amount (KES)': r.invoice_record?.amount != null ? Number(r.invoice_record.amount) : '',
+        Paid: r.invoice_record?.paid ? 'Yes' : 'No',
+        Notes: r.invoice_record?.notes || '',
+      }))
+    ), 'Billing')
 
     XLSX.writeFile(wb, `WardRounds_Analytics_${dateFrom}_to_${dateTo}.xlsx`)
   }
@@ -797,6 +900,69 @@ export default function Analytics() {
                 renderChart={(h) => <PieWithLegend data={rebookedStats} size={h >= 300 ? 280 : 200} />}
               />
             </div>
+          </div>
+        )}
+
+        {/* ── BILLING TAB ───────────────────────────────────────────────────── */}
+        {!loading && activeTab === 'Billing' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <StatCard label="Not Billed" value={billingSummary.unbilled} color="#FF9500" />
+              <StatCard label="Awaiting Payment" value={billingSummary.awaiting} color="#007AFF" />
+              <StatCard label="Paid" value={billingSummary.paid} color="#34C759" />
+              <StatCard label="Unbilled Value" value={fmtKES(billingSummary.unbilledValue)} color="#FF9500" />
+              <StatCard label="Outstanding" value={fmtKES(billingSummary.outstanding)} color="#007AFF" />
+              <StatCard label="Collected" value={fmtKES(billingSummary.collected)} color="#34C759" />
+            </div>
+
+            <ChartCard
+              title="Billing Status"
+              isEmpty={billingStatusPie.every(d => !d.value)}
+              renderChart={(h) => <PieWithLegend data={billingStatusPie} size={h >= 300 ? 280 : 200} />}
+            />
+
+            <ChartCard
+              title="Billing by Hospital"
+              isEmpty={!billingByHospital.length || billingByHospital.every(d => !d['Unbilled (KES)'] && !d['Outstanding (KES)'] && !d['Collected (KES)'])}
+              renderChart={(h) => (
+                <ResponsiveContainer width="100%" height={h}>
+                  <BarChart data={billingByHospital} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={AXIS_TICK} />
+                    <YAxis tick={AXIS_TICK} tickFormatter={v => `${Math.round(v / 1000)}k`} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={v => fmtKES(v)} />
+                    <Legend />
+                    <Bar dataKey="Unbilled (KES)" fill="#FF9500" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Outstanding (KES)" fill="#007AFF" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Collected (KES)" fill="#34C759" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            />
+
+            <ChartCard
+              title="Collected vs Outstanding Over Time"
+              isEmpty={billingByMonth.every(d => !d['Outstanding (KES)'] && !d['Collected (KES)'])}
+              renderChart={(h) => (
+                <ResponsiveContainer width="100%" height={h}>
+                  <BarChart data={billingByMonth} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="month" tick={AXIS_TICK} />
+                    <YAxis tick={AXIS_TICK} tickFormatter={v => `${Math.round(v / 1000)}k`} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={v => fmtKES(v)} />
+                    <Legend />
+                    <Bar dataKey="Collected (KES)" stackId="a" fill="#34C759" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Outstanding (KES)" stackId="a" fill="#FF9500" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            />
+
+            <ChartCard
+              title="Mode of Billing"
+              isEmpty={!billingModePie.length}
+              renderChart={(h) => <PieWithLegend data={billingModePie} size={h >= 300 ? 280 : 200} />}
+            />
           </div>
         )}
 

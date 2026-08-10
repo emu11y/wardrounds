@@ -7,6 +7,7 @@ export const PAGE_ACCESS_KEYS = [
   'view_admin',
   'view_admit',
   'view_appointments',
+  'view_billing',
 ]
 
 // Action permission keys mirror the boolean columns on user_permissions.
@@ -97,6 +98,10 @@ export function resolvePermissions(row, role) {
   resolved.view_patients = resolved.can_view_all_patients
   resolved.view_analytics = resolved.can_view_reports === true && resolved.can_view_revenue === true
   resolved.view_admin = resolved.can_access_admin
+  // Billing verification page (post-discharge accounts follow-up) rides on the
+  // existing billing capability — the "Billing" Page Access toggle in Settings
+  // flips can_edit_billing. The in-page "Paid" switch additionally needs can_mark_paid.
+  resolved.view_billing = resolved.can_edit_billing === true
   return resolved
 }
 
