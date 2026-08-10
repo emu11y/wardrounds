@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Search, Check, Loader2, ChevronDown, ChevronUp, FileDown, FileSpreadsheet, Banknote } from 'lucide-react'
+import { Search, Check, Loader2, ChevronDown, ChevronUp, FileDown, FileSpreadsheet, Banknote, SlidersHorizontal } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../context/AuthContext'
 import { fetchAllAdmissions, fetchInvoiceRecords, upsertInvoiceRecord } from '../lib/api'
@@ -314,6 +314,7 @@ export default function Billing() {
   const [monthFilter, setMonthFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!user?.team_id) return
@@ -453,9 +454,14 @@ export default function Billing() {
     printHtml(body, { title: `WardRounds_Billing_${tabName.replace(/\s+/g, '_')}`, landscape: true, extraCss })
   }
 
-  const chip = (active) =>
-    `inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
-      active ? 'bg-ios-blue text-white border-ios-blue shadow-sm' : 'bg-white/70 text-gray-600 border-white/60 hover:bg-white'}`
+  // How many filters are away from their default — shown as a badge on the pill.
+  const activeFilterCount =
+    (hospitalTab !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) +
+    (admStatusFilter !== 'all' ? 1 : 0) + (monthFilter !== 'all' ? 1 : 0)
+
+  const clearFilters = () => { setHospitalTab('all'); setStatusFilter('all'); setAdmStatusFilter('all'); setMonthFilter('all') }
+
+  const selectCls = 'w-full px-3 py-2 rounded-xl bg-white/70 border border-white/60 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-ios-blue/40'
 
   return (
     <div className="flex flex-col min-h-full">
@@ -481,19 +487,6 @@ export default function Billing() {
           </div>
         </div>
 
-        {/* Hospital tabs */}
-        {hospitals.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => setHospitalTab('all')} className={chip(hospitalTab === 'all')}>All hospitals</button>
-            {hospitals.map(h => (
-              <button key={h.id} onClick={() => setHospitalTab(h.id)} className={chip(hospitalTab === h.id)}>
-                {h.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: h.color }} />}
-                {h.name}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Summary chips */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <div className={`${GLASS_CARD} p-3`}><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Patients</p><p className="text-xl font-bold text-gray-900 mt-0.5 tabular-nums">{counts.total}</p></div>
@@ -502,31 +495,79 @@ export default function Billing() {
           <div className={`${GLASS_CARD} p-3`}><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Outstanding</p><p className="text-lg font-bold text-gray-900 mt-0.5 tabular-nums">{formatKES(counts.outstanding)}</p></div>
         </div>
 
-        {/* Search + month/status selects + bill-status filter */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[220px]">
+        {/* Search + single Filters pill (all four dimensions live in the popover) */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search patient name or invoice number"
+              placeholder="Search patient or invoice #"
               className="w-full pl-9 pr-3 py-2.5 rounded-2xl bg-white/70 border border-white/60 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-ios-blue/40" />
           </div>
-          <select value={admStatusFilter} onChange={e => setAdmStatusFilter(e.target.value)}
-            className="px-3 py-2.5 rounded-2xl bg-white/70 border border-white/60 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-ios-blue/40">
-            {ADM_STATUS_FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-          </select>
-          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
-            className="px-3 py-2.5 rounded-2xl bg-white/70 border border-white/60 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-ios-blue/40">
-            <option value="all">All months</option>
-            {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-          </select>
-          {STATUS_FILTERS.map(f => {
-            const badge = f.key === 'unbilled' ? counts.unbilled : f.key === 'awaiting' ? counts.awaiting : f.key === 'paid' ? counts.paid : counts.total
-            return (
-              <button key={f.key} onClick={() => setStatusFilter(f.key)} className={chip(statusFilter === f.key)}>
-                {f.label}<span className={statusFilter === f.key ? 'text-white/80' : 'text-gray-400'}>{badge}</span>
-              </button>
-            )
-          })}
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setFiltersOpen(o => !o)}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm font-semibold shadow-sm transition ${
+                filtersOpen || activeFilterCount > 0
+                  ? 'bg-ios-blue text-white border-ios-blue'
+                  : 'bg-white/70 text-gray-700 border-white/60 hover:bg-white'}`}
+            >
+              <SlidersHorizontal size={15} />
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white/25 text-white text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {filtersOpen && (
+              <>
+                {/* click-away layer */}
+                <div className="fixed inset-0 z-40" onClick={() => setFiltersOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 z-50 w-[calc(100vw-3rem)] max-w-xs bg-white/90 backdrop-blur-xl border border-white/60 rounded-2xl shadow-2xl p-4 space-y-3">
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Hospital</span>
+                    <select value={hospitalTab} onChange={e => setHospitalTab(e.target.value)} className={`${selectCls} mt-1`}>
+                      <option value="all">All hospitals</option>
+                      {hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Billing status</span>
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${selectCls} mt-1`}>
+                      {STATUS_FILTERS.map(f => {
+                        const n = f.key === 'unbilled' ? counts.unbilled : f.key === 'awaiting' ? counts.awaiting : f.key === 'paid' ? counts.paid : counts.total
+                        return <option key={f.key} value={f.key}>{f.label} ({n})</option>
+                      })}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Admission status</span>
+                    <select value={admStatusFilter} onChange={e => setAdmStatusFilter(e.target.value)} className={`${selectCls} mt-1`}>
+                      {ADM_STATUS_FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Month</span>
+                    <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={`${selectCls} mt-1`}>
+                      <option value="all">All months</option>
+                      {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                    </select>
+                  </label>
+                  <div className="flex items-center justify-between pt-1">
+                    <button onClick={clearFilters} disabled={activeFilterCount === 0}
+                      className="text-xs font-semibold text-gray-400 hover:text-gray-600 disabled:opacity-40">
+                      Clear all
+                    </button>
+                    <button onClick={() => setFiltersOpen(false)}
+                      className="px-4 py-1.5 rounded-full bg-ios-blue text-white text-xs font-semibold">
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Cards */}
