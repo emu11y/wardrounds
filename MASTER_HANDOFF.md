@@ -61,7 +61,7 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 
 ## 3. CURRENT STATE SNAPSHOT (3 Oct 2026)
 
-- **Branches:** `dev` == `main` == `645d8c3` ("Billing cards: Patient Details sub-card…"). Everything is live on wardrounds.site.
+- **Branches (updated 3 Oct evening):** `dev` == `main` == `6df644c` + docs. Earlier: `645d8c3` ("Billing cards: Patient Details sub-card…"). Everything is live on wardrounds.site.
 - **Working tree:** clean except untracked `WHATSAPP_GOLIVE_STATE.md` (now merged here → archived).
 - **Last shipped (10 Aug):** Billing verification page + Analytics Billing tab + `invoice_records` table (TEST + PROD), mobile Filters popover, "Today" pill, Patient Details sub-card, UHID column in exports.
 - **WhatsApp:** Phases 1–6 built and verified E2E on TEST; Phase 7 (PROD go-live) not started beyond schema.
@@ -240,7 +240,7 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 - Grey bar / lingering backdrop in standalone PWA (Settings) — needs on-device debug.
 - `SITE_URL` secret → `https://wardrounds.site`.
 
-### P1 — Shift Monitor go-live (in order)
+### P1 — Shift Monitor go-live — ✅ SQL on TEST+PROD and code live (3 Oct). Remaining: Emu's signed-in check on wardrounds.site (step 2 list below)
 1. Run `WARDROUNDS_SQL_SHIFT_MONITOR.sql` on **TEST** (blocks 1→6, one execution each; block 6 should print 0,0,0,1). **Must run before the branch is deployed** — `updateUserPermissions` now writes `can_log_shifts`, so saving any member's permissions fails until the column exists.
 2. Test on the `feat/shift-monitor` Vercel preview (TEST DB): log a day, night (overnight), per-hour + overtime + per-patient % shift; Repeat; Edit; Delete; Payers add/archive/restore; Billed/Paid/invoice save; filters; Excel + PDF; member account with "Shift Monitor" toggled on sees only own shifts; Billing page unchanged (regression).
 3. Merge `feat/shift-monitor` → `dev`; run the SQL on **PROD**; promote.
@@ -277,7 +277,7 @@ Duplicate-admission guard on scanner path (`AdmitPatient.jsx` single source) · 
 
 **Phase 8 — UI minor fixes** `[~]` — ✅ ActionFan: larger 56px action circles fanned in a semicircle (branch `feat/action-fan`, also included in `feat/shift-monitor`). ✅ Calendar side panel → right-hand slide-in drawer on mobile/tablet via edge tab (`components/SlideOverPanel.jsx`, Outpatient + Appointments; inline on desktop ≥1024px) — branch `feat/calendar-drawer`. ✅ Inpatient header redesigned as a **Ward board** (option C — warm paper tone, light numerals, hairline columns; also the hospital filter, replacing the duplicate tile row + tab row; shows on-the-ward / admitted today / discharged today and each hospital's wards) — `components/WardBoard.jsx`, branch `feat/ward-board`. Landing-page mocks (`DashboardMock`, `MobileLanding` header band) still show the old gradient header → update with the landing overhaul. Remaining: list to be captured from Emu's walkthrough (screenshots), plus P1 verify items above.
 
-**Phase 9 — Shift Monitor** `[~]` BUILT on branch `feat/shift-monitor` (3 Oct) — awaiting SQL run + testing. See §6 *Earnings / Shift Monitor*. Original brief: for clinicians paid per shift (locum/sessional). Log shifts (hospital, date, start/end, shift type day/night/weekend/on-call, rate), running totals, billed/paid tracking (reuse Billing-page patterns + `invoice_records`-style status), Analytics + export. New `shifts` table (team-scoped RLS), `api.js` functions, page + permission key + Settings toggle. *Design questions open — see §10.1.*
+**Phase 9 — Shift Monitor** `[~]` LIVE on PROD (3 Oct, main @ 6df644c) — awaiting real-use testing. See §6 *Earnings / Shift Monitor*. Original brief: for clinicians paid per shift (locum/sessional). Log shifts (hospital, date, start/end, shift type day/night/weekend/on-call, rate), running totals, billed/paid tracking (reuse Billing-page patterns + `invoice_records`-style status), Analytics + export. New `shifts` table (team-scoped RLS), `api.js` functions, page + permission key + Settings toggle. *Design questions open — see §10.1.*
 
 **Phase 10 — Onboarding wizard** `[ ]` — first-run flow capturing:
 1. Profession — doctor / surgeon / nurse / physiotherapist / pharmacist / clinical officer / other.
@@ -315,6 +315,10 @@ rm -f .git/HEAD.lock                                  # after sandbox commits, i
 ---
 
 ## 12. WORK LOG (newest first)
+
+### 2026-10-03 (evening) — PROMOTED TO PRODUCTION
+- Shift Monitor SQL applied by Claude via Chrome (Emu signed in, authorised): **PROD** blocks 1–6 run separately → verify payers 0 · shifts 0 · shift billing rows 0 · owner check 1 · `can_log_shifts` 1. **TEST** run as one transaction; first attempt failed because **TEST lacked `current_user_role()`** (PROD has it) → added PROD's exact definition to TEST, re-ran, verified (all as PROD + helper 1). TEST now matches PROD for this helper.
+- `feat/ward-board` (6df644c: ActionFan + Shift Monitor + calendar drawer + ward board) fast-forwarded to `dev` and `main`; Vercel deployed; live bundle on wardrounds.site confirmed to contain the Shifts page and Ward board. **In-app behaviour not yet checked by a signed-in user** (Claude cannot sign in).
 
 ### 2026-10-03 (evening) — Inpatient "Ward board" header
 - Emu picked option C from three mocked directions. New `components/WardBoard.jsx` replaces Dashboard's gradient/glass stats block AND the separate hospital tab row (they duplicated one filter). Adds `countDischargesOn()` (api.js, head-only count), `nairobiDateStr()` + `shortHospitalName()` (utils.js). Kept the red "new today" badge per hospital (visited-hospital logic unchanged). Dashboard.jsx −190 lines. Branch `feat/ward-board` (stacked on `feat/calendar-drawer`). Build clean; rendered at 390px and 1100px (2 and 4 hospitals, selected states, badge).
