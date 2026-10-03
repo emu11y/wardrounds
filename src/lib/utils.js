@@ -38,3 +38,14 @@ export function darken(hex, amt = 45) {
   return '#' + [Math.max(0, r), Math.max(0, g), Math.max(0, b)]
     .map(v => v.toString(16).padStart(2, '0')).join('')
 }
+
+// Today's date in Nairobi as YYYY-MM-DD (independent of the device's timezone).
+export function nairobiDateStr(d = new Date()) {
+  return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' })
+}
+
+// Short display name for a hospital on narrow screens:
+// "The Avenue Hospital" → "Avenue", "MP Shah Hospital" → "MP Shah".
+export function shortHospitalName(name = '') {
+  return name.replace(/^the\s+/i, '').replace(/\s+(hospital|healthcare|medical centre|medical center)(\s+ltd)?$/i, '').trim() || name
+}

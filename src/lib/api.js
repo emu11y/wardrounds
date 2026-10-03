@@ -117,6 +117,22 @@ export async function fetchActiveAdmissions(teamId) {
   return data
 }
 
+// How many admissions were discharged on a given Nairobi date (YYYY-MM-DD).
+// Head-only count — no rows transferred. Used by the Inpatient ward board.
+export async function countDischargesOn(teamId, dateStr) {
+  const next = new Date(`${dateStr}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  const { count, error } = await supabase
+    .from('admissions')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', teamId)
+    .eq('status', 'discharged')
+    .gte('discharge_date', dateStr)
+    .lt('discharge_date', next.toISOString().slice(0, 10))
+  if (error) throw error
+  return count || 0
+}
+
 export async function fetchAllAdmissions(teamId) {
   const { data, error } = await supabase
     .from('admissions')
