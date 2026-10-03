@@ -275,7 +275,7 @@ Duplicate-admission guard on scanner path (`AdmitPatient.jsx` single source) · 
 
 ### New build plan (agreed 3 Oct 2026) — in this order
 
-**Phase 8 — UI minor fixes** `[~]` — ✅ ActionFan: larger 56px action circles fanned in a semicircle (branch `feat/action-fan`, also included in `feat/shift-monitor`). Remaining: list to be captured from Emu's walkthrough (screenshots), plus P1 verify items above.
+**Phase 8 — UI minor fixes** `[~]` — ✅ ActionFan: larger 56px action circles fanned in a semicircle (branch `feat/action-fan`, also included in `feat/shift-monitor`). ✅ Calendar side panel → right-hand slide-in drawer on mobile/tablet via edge tab (`components/SlideOverPanel.jsx`, Outpatient + Appointments; inline on desktop ≥1024px) — branch `feat/calendar-drawer`. Remaining: list to be captured from Emu's walkthrough (screenshots), plus P1 verify items above.
 
 **Phase 9 — Shift Monitor** `[~]` BUILT on branch `feat/shift-monitor` (3 Oct) — awaiting SQL run + testing. See §6 *Earnings / Shift Monitor*. Original brief: for clinicians paid per shift (locum/sessional). Log shifts (hospital, date, start/end, shift type day/night/weekend/on-call, rate), running totals, billed/paid tracking (reuse Billing-page patterns + `invoice_records`-style status), Analytics + export. New `shifts` table (team-scoped RLS), `api.js` functions, page + permission key + Settings toggle. *Design questions open — see §10.1.*
 
@@ -315,6 +315,9 @@ rm -f .git/HEAD.lock                                  # after sandbox commits, i
 ---
 
 ## 12. WORK LOG (newest first)
+
+### 2026-10-03 (late pm) — Calendar rail becomes a mobile slide-in drawer
+- New shared `components/SlideOverPanel.jsx`: inline side rail on desktop (lg+), right-edge calendar tab + slide-in drawer below lg (backdrop, Esc, scroll lock, safe-area aware; children can be a render-prop receiving `close`). Applied to Outpatient + Appointments `CalendarRail`; picking a date/visit/blocked range closes the drawer. Branch `feat/calendar-drawer` (stacked on `feat/shift-monitor`, so it contains ActionFan + Shift Monitor too). Build clean; rendered closed/open at 390px and confirmed hidden-tab inline layout at 1280px.
 
 ### 2026-10-03 (pm) — ActionFan + Shift Monitor built (branches pushed, not merged)
 - **ActionFan** (`feat/action-fan`, 9c96271): one shared Actions control for Inpatient + Outpatient (+ Shifts) cards — 56px circles in a semicircle right of the trigger, portalled + space-aware (header/bottom nav/screen edge), closes on outside tap/scroll/Esc.

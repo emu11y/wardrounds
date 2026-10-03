@@ -22,6 +22,7 @@ import Toast from '../components/Toast'
 import DoctorFilterDropdown from '../components/DoctorFilterDropdown'
 import ReminderComposeModal from '../components/ReminderComposeModal'
 import CalendarRail from '../components/calendar/CalendarRail'
+import SlideOverPanel from '../components/SlideOverPanel'
 import BookedSlotModal from '../components/calendar/BookedSlotModal'
 import { monthBounds, groupBlockedRanges } from '../components/calendar/calendarUtils'
 import { calcAge, formatDate, todayStr, darken, formatKES } from '../lib/utils'
@@ -1147,19 +1148,22 @@ export default function Outpatient() {
         })()}
       </div>
 
-      <div className="w-full lg:w-64 flex-shrink-0">
-        <CalendarRail
-          date={todayStr()}
-          schedule={railSchedule.filter(v => !v.is_adhoc)}
-          adhocBookings={railAdhoc}
-          density={railDensity}
-          blockedRanges={railBlockedRanges}
-          onSelectDate={d => navigate('/appointments', { state: { openDate: d } })}
-          onEditBlockRange={() => navigate('/appointments')}
-          onUnblockRange={() => navigate('/appointments')}
-          onSelectVisit={setRailVisit}
-        />
-      </div>
+      {/* Inline rail on desktop; right-hand slide-in drawer (edge tab) on mobile/tablet */}
+      <SlideOverPanel title="Schedule">
+        {close => (
+          <CalendarRail
+            date={todayStr()}
+            schedule={railSchedule.filter(v => !v.is_adhoc)}
+            adhocBookings={railAdhoc}
+            density={railDensity}
+            blockedRanges={railBlockedRanges}
+            onSelectDate={d => { close(); navigate('/appointments', { state: { openDate: d } }) }}
+            onEditBlockRange={() => { close(); navigate('/appointments') }}
+            onUnblockRange={() => { close(); navigate('/appointments') }}
+            onSelectVisit={v => { close(); setRailVisit(v) }}
+          />
+        )}
+      </SlideOverPanel>
       </div>
 
       {/* Booked slot options (from the calendar rail's agenda) */}

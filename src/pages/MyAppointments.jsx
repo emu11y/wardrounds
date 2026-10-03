@@ -21,6 +21,7 @@ import WeekStrip from '../components/calendar/WeekStrip'
 import WeekGrid from '../components/calendar/WeekGrid'
 import MonthGrid from '../components/calendar/MonthGrid'
 import CalendarRail from '../components/calendar/CalendarRail'
+import SlideOverPanel from '../components/SlideOverPanel'
 import BookedSlotModal from '../components/calendar/BookedSlotModal'
 import PatientBookingSearch from '../components/calendar/PatientBookingSearch'
 import { shiftDate, shiftMonth, weekDates, monthBounds, groupBlockedRanges } from '../components/calendar/calendarUtils'
@@ -497,15 +498,17 @@ export default function MyAppointments() {
                   onOpenBlockRange={() => setShowRangeModal(true)}
                 />
               </div>
-              <div className="w-full lg:w-64 flex-shrink-0">
+              {/* Inline rail on desktop; right-hand slide-in drawer (edge tab) on mobile/tablet */}
+              <SlideOverPanel title="Schedule">
+                {close => (
                 <CalendarRail
                   date={date}
                   schedule={gridSchedule}
                   adhocBookings={adhocBookings}
                   density={density}
                   blockedRanges={blockedRanges}
-                  onSelectDate={openDay}
-                  onEditBlockRange={r => { setEditingRange(r); setShowRangeModal(true) }}
+                  onSelectDate={d => { close(); openDay(d) }}
+                  onEditBlockRange={r => { close(); setEditingRange(r); setShowRangeModal(true) }}
                   onUnblockRange={async r => {
                     try {
                       await unblockSlots(r.ids)
@@ -516,9 +519,10 @@ export default function MyAppointments() {
                     }
                     loadSchedule()
                   }}
-                  onSelectVisit={setBookedSlotVisit}
+                  onSelectVisit={v => { close(); setBookedSlotVisit(v) }}
                 />
-              </div>
+                )}
+              </SlideOverPanel>
             </div>
           </>
         )}
