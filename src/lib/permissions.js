@@ -8,6 +8,7 @@ export const PAGE_ACCESS_KEYS = [
   'view_admit',
   'view_appointments',
   'view_billing',
+  'view_shifts',
 ]
 
 // Action permission keys mirror the boolean columns on user_permissions.
@@ -23,6 +24,7 @@ export const PERMISSION_KEYS = [
   'can_access_admin',
   'can_manage_team',
   'can_view_revenue',
+  'can_log_shifts',
 ]
 
 const ALL_KEYS = [...PAGE_ACCESS_KEYS, ...PERMISSION_KEYS]
@@ -73,6 +75,7 @@ export const PERMISSION_LABELS = {
   can_access_admin: 'Access Admin',
   can_manage_team: 'Manage Team',
   can_view_revenue: 'View Revenue Details',
+  can_log_shifts: 'Shift Monitor',
 }
 
 // Effective permissions for a user: each key on the override row wins when explicitly
@@ -102,6 +105,9 @@ export function resolvePermissions(row, role) {
   // existing billing capability — the "Billing" Page Access toggle in Settings
   // flips can_edit_billing. The in-page "Paid" switch additionally needs can_mark_paid.
   resolved.view_billing = resolved.can_edit_billing === true
+  // Shift Monitor (per-shift earnings). Admins inherit ALL_TRUE; members are
+  // fail-closed until an admin flips the Settings "Shift Monitor" toggle.
+  resolved.view_shifts = resolved.can_log_shifts === true
   return resolved
 }
 

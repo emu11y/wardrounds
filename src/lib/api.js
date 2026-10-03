@@ -757,6 +757,7 @@ export async function updateUserPermissions(userId, teamId, permsObject, actingU
     can_access_admin:     perms.can_access_admin     ?? false,
     can_manage_team:      perms.can_manage_team      ?? false,
     can_view_revenue:     perms.can_view_revenue     ?? null, // null = inherit role default, never coerce to false
+    can_log_shifts:       perms.can_log_shifts       ?? null, // Shift Monitor (WARDROUNDS_SQL_SHIFT_MONITOR.sql) — null = inherit
   }
 
   const { data: existing } = await supabase
@@ -1096,11 +1097,15 @@ export async function dischargePatient(admissionId) {
 // Fetched separately (not a PostgREST embed on admissions) so it never depends on the
 // FK relationship being present in the schema cache — the Billing page reuses the
 // existing fetchAllAdmissions() for patient/ward/service data and joins these in JS.
-export async function fetchInvoiceRecords(teamId) {
+// invoice_records rows belong to EITHER an admission OR a shift (CHECK exactly one).
+// kind: 'admission' (default — Billing page + Analytics) | 'shift' (Shifts page).
+export async function fetchInvoiceRecords(teamId, kind = 'admission') {
+  const ownerCol = kind === 'shift' ? 'shift_id' : 'admission_id'
   const { data, error } = await supabase
     .from('invoice_records')
     .select('*')
     .eq('team_id', teamId)
+    .not(ownerCol, 'is', null)
   if (error) throw error
   return data || []
 }
@@ -1109,14 +1114,20 @@ export async function fetchInvoiceRecords(teamId) {
 // Check-then-update/insert (not upsert) — mirrors updateUserPermissions, avoiding
 // INSERT-policy violations on an existing row. Only whitelisted fields are written;
 // billed_at / paid_at are stamped on the false→true transition and cleared on true→false.
-export async function upsertInvoiceRecord(admissionId, teamId, patch, actingUser) {
+//
+// `owner` is an admission id (string — original signature, still used by Billing) or
+// { admissionId } / { shiftId } — so admissions and shifts share ONE billing workflow.
+export async function upsertInvoiceRecord(owner, teamId, patch, actingUser) {
   const p = patch || {}
+  const ownerCol = typeof owner === 'object' && owner?.shiftId ? 'shift_id' : 'admission_id'
+  const ownerId = typeof owner === 'object' ? (owner.shiftId || owner.admissionId) : owner
 
-  const { data: existing } = await supabase
+  const { data: existing, error: readErr } = await supabase
     .from('invoice_records')
     .select('*')
-    .eq('admission_id', admissionId)
+    .eq(ownerCol, ownerId)
     .maybeSingle()
+  if (readErr) throw readErr
 
   const nowIso = new Date().toISOString()
   const nextBilled = p.billed ?? existing?.billed ?? false
@@ -1149,7 +1160,7 @@ export async function upsertInvoiceRecord(admissionId, teamId, patch, actingUser
   } else {
     const { data, error } = await supabase
       .from('invoice_records')
-      .insert({ admission_id: admissionId, team_id: teamId, created_by: actingUser?.id ?? null, ...fields })
+      .insert({ [ownerCol]: ownerId, team_id: teamId, created_by: actingUser?.id ?? null, ...fields })
       .select()
       .single()
     if (error) throw error
@@ -1161,10 +1172,111 @@ export async function upsertInvoiceRecord(admissionId, teamId, patch, actingUser
     action: 'update_billing',
     entityType: 'invoice_record',
     entityId: result.id,
-    details: { admission_id: admissionId, billed: nextBilled, paid: nextPaid, invoice_number: fields.invoice_number },
+    details: { [ownerCol]: ownerId, billed: nextBilled, paid: nextPaid, invoice_number: fields.invoice_number },
   })
 
   return result
+}
+
+// ─── PAYERS (who pays — shared by shifts and future earning types) ────────────
+
+const PAYER_SELECT = '*, hospitals(id, name, color)'
+
+export async function fetchPayers(teamId, { includeArchived = false } = {}) {
+  let q = supabase.from('payers').select(PAYER_SELECT).eq('team_id', teamId).is('deleted_at', null)
+  if (!includeArchived) q = q.eq('status', 'active')
+  const { data, error } = await q.order('created_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+const PAYER_FIELDS = ['payer_type', 'hospital_id', 'name', 'phone', 'email', 'notes', 'status']
+const pick = (obj, keys) => Object.fromEntries(keys.filter(k => obj[k] !== undefined).map(k => [k, obj[k] === '' ? null : obj[k]]))
+
+export async function createPayer(teamId, payer, actingUser) {
+  const row = {
+    id: crypto.randomUUID(),            // client id → no read-back needed under RLS
+    team_id: teamId,
+    ...pick(payer, PAYER_FIELDS),
+    created_by: actingUser?.id ?? null,
+    updated_by: actingUser?.id ?? null,
+  }
+  if (row.payer_type !== 'hospital') row.hospital_id = null
+  const { error } = await supabase.from('payers').insert(row)
+  if (error) throw error
+  await logActivity({ user: actingUser, action: 'create_payer', entityType: 'payer', entityId: row.id, details: { payer_type: row.payer_type, name: row.name } })
+  return row
+}
+
+export async function updatePayer(payerId, patch, actingUser) {
+  const fields = { ...pick(patch, PAYER_FIELDS), updated_by: actingUser?.id ?? null, updated_at: new Date().toISOString() }
+  const { error } = await supabase.from('payers').update(fields).eq('id', payerId)
+  if (error) throw error
+  await logActivity({ user: actingUser, action: 'update_payer', entityType: 'payer', entityId: payerId, details: pick(patch, ['status', 'name']) })
+}
+
+// ─── SHIFTS (Shift Monitor) — totals are derived in lib/earnings.js ───────────
+
+const SHIFT_FIELDS = [
+  'user_id', 'hospital_id', 'payer_id', 'shift_type', 'starts_at', 'ends_at',
+  'rate_unit', 'base_rate',
+  'overtime_enabled', 'overtime_hours', 'overtime_rate',
+  'per_patient_enabled', 'per_patient_mode', 'per_patient_amount', 'per_patient_percent', 'patient_count',
+  'notes',
+]
+const SHIFT_NUMERIC = ['base_rate', 'overtime_hours', 'overtime_rate', 'per_patient_amount', 'per_patient_percent', 'patient_count']
+
+function cleanShift(input) {
+  const row = pick(input, SHIFT_FIELDS)
+  for (const k of SHIFT_NUMERIC) if (k in row) row[k] = row[k] == null ? 0 : Number(row[k])
+  return row
+}
+
+// RLS limits non-admins to their own rows; admins get the whole team. Pass userId
+// to narrow (e.g. an admin filtering one clinician).
+export async function fetchShifts(teamId, { userId = null, from = null, to = null } = {}) {
+  let q = supabase
+    .from('shifts')
+    .select('*, hospitals(id, name, color), payers(id, payer_type, name, hospital_id, hospitals(id, name)), clinician:users!shifts_user_id_fkey(id, full_name)')
+    .eq('team_id', teamId)
+    .is('deleted_at', null)
+  if (userId) q = q.eq('user_id', userId)
+  if (from) q = q.gte('starts_at', from)
+  if (to) q = q.lt('starts_at', to)
+  const { data, error } = await q.order('starts_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createShift(teamId, input, actingUser) {
+  const row = {
+    id: crypto.randomUUID(),
+    team_id: teamId,
+    ...cleanShift(input),
+    user_id: actingUser?.id,          // always the logged-in clinician (never copied from a template)
+    created_by: actingUser?.id ?? null,
+    updated_by: actingUser?.id ?? null,
+  }
+  const { error } = await supabase.from('shifts').insert(row)
+  if (error) throw error
+  await logActivity({ user: actingUser, action: 'create_shift', entityType: 'shift', entityId: row.id, details: { starts_at: row.starts_at, shift_type: row.shift_type } })
+  return row
+}
+
+export async function updateShift(shiftId, input, actingUser) {
+  const fields = { ...cleanShift(input), updated_by: actingUser?.id ?? null, updated_at: new Date().toISOString() }
+  delete fields.user_id   // a shift never changes owner
+  const { error } = await supabase.from('shifts').update(fields).eq('id', shiftId)
+  if (error) throw error
+  await logActivity({ user: actingUser, action: 'update_shift', entityType: 'shift', entityId: shiftId, details: { starts_at: fields.starts_at } })
+}
+
+// Soft delete (deleted_at) — preserves history and any billing record.
+export async function deleteShift(shiftId, actingUser) {
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('shifts').update({ deleted_at: now, updated_at: now, updated_by: actingUser?.id ?? null }).eq('id', shiftId)
+  if (error) throw error
+  await logActivity({ user: actingUser, action: 'delete_shift', entityType: 'shift', entityId: shiftId })
 }
 
 // ─── OUTPATIENT VISITS ────────────────────────────────────────────────────────

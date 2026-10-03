@@ -49,32 +49,50 @@ function radiusFor(n, rangeDeg) {
 
 // Work out the arc centre, radius and angle range for n buttons next to `rect`.
 // Angles: -90° = straight up, 0° = straight right, +90° = straight down.
+// Buttons keep a fixed spacing along the arc, so a few actions form a tight curve
+// centred to the right and six or more fill the full semicircle. If the arc would
+// run under the header or the bottom nav it is rotated toward the roomy side, and
+// only squeezed (radius grown) when it can't fit at all.
+const BASE_R = 96
+const stepFor = r => deg(2 * Math.asin(Math.min(1, (SIZE + GAP) / (2 * r))))
+
 export function computeFanLayout(n, rect, vw, vh) {
   let cx = rect.right + 6
   const cy = rect.top + rect.height / 2
   const spaceAbove = cy - TOP_CLEAR - SIZE / 2
   const spaceBelow = vh - BOTTOM_CLEAR - cy - SIZE / 2
 
-  let start = -90, end = 90, r = radiusFor(n, 180)
+  let r = Math.max(BASE_R, radiusFor(n, 180))
+  let range = n <= 1 ? 0 : Math.min(180, (n - 1) * stepFor(r))
+  let start = -range / 2, end = range / 2
+
+  // Max angles that stay on-screen vertically at radius r.
+  const limits = rr => ({
+    up: -deg(Math.asin(clamp(spaceAbove / rr, 0, 1))),
+    down: deg(Math.asin(clamp(spaceBelow / rr, 0, 1))),
+  })
   for (let i = 0; i < 4; i++) {
-    start = -deg(Math.asin(clamp(spaceAbove / r, 0, 1)))
-    end = deg(Math.asin(clamp(spaceBelow / r, 0, 1)))
-    // If one side is cramped, lean the arc toward the roomy side.
-    if (end - start < 60) {
-      if (spaceAbove >= spaceBelow) { end = Math.max(end, 0); start = Math.min(start, end - 90) }
-      else { start = Math.min(start, 0); end = Math.max(end, start + 90) }
+    const { up, down } = limits(r)
+    if (end > down) { const d = end - down; start -= d; end -= d }       // rotate up
+    if (start < up) { const d = up - start; start += d; end += d }       // rotate down
+    if (start >= up - 0.01 && end <= down + 0.01) break
+    // Still doesn't fit: narrow to the available window and grow r to keep spacing.
+    start = Math.max(start, up); end = Math.min(end, down)
+    if (end - start < 30) { // pathological (tiny viewport) — lean to the roomy side
+      if (spaceAbove >= spaceBelow) { end = Math.max(end, 0); start = end - 90 } else { start = Math.min(start, 0); end = start + 90 }
     }
     r = radiusFor(n, end - start)
   }
 
   // Keep the rightmost button on-screen: pull the centre left (down to the
   // trigger's middle), then shrink the radius as a last resort.
+  const reach = r * Math.max(Math.cos(rad(clamp(0, start, end))), 0)
   const maxReach = vw - EDGE - SIZE / 2
-  if (cx + r > maxReach) cx = Math.max(rect.left + rect.width / 2, maxReach - r)
-  if (cx + r > maxReach) r = Math.max(MIN_R, maxReach - cx)
+  if (cx + reach > maxReach) cx = Math.max(rect.left + rect.width / 2, maxReach - reach)
+  if (cx + r > maxReach && cx + reach > maxReach) r = Math.max(MIN_R, maxReach - cx)
 
   const positions = Array.from({ length: n }, (_, i) => {
-    const a = rad(n === 1 ? 0 : start + ((end - start) * i) / (n - 1))
+    const a = rad(n === 1 ? (start + end) / 2 : start + ((end - start) * i) / (n - 1))
     return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }
   })
   return { cx, cy, positions }

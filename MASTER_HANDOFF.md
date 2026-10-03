@@ -142,6 +142,13 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 
 **WhatsApp:** DRY pair `supabase/functions/_shared/whatsapp.ts` ↔ `src/lib/whatsapp.js` (`toE164Kenya`, `waParam`, `buildApptWaParams` 7 params, `{{7}}` clinic contact; `buildRsvpPayloads` server-only). Outbound → `graph.facebook.com/v23.0/<PHONE_ID>/messages` with quick replies `CONFIRM:<visitId>` / `RESCHED:<visitId>`. Inbound webhook verifies `X-Hub-Signature-256` → sets `rsvp_status/rsvp_at` → logs; always 200. **Two webhook layers both required:** app-level `messages` subscription AND `POST /<WABA_ID>/subscribed_apps`. Sends only if `teams.whatsapp_enabled` AND patient `whatsapp_opt_in` AND valid Kenyan mobile. Utility ≈ KES 0.80/conv; marketing ≈ 5.20; unverified cap 250 conv/day.
 
+**Earnings / Shift Monitor (3 Oct 2026):**
+- Schema `WARDROUNDS_SQL_SHIFT_MONITOR.sql` (run blocks 1→6 separately, TEST then PROD): `payers` (hospital|agency|patient|insurer|other; hospital payers reference `hospitals`, name never duplicated; archived not deleted), `shifts` (base rate per shift|hour + optional overtime + optional per-patient fixed|percent; soft delete `deleted_at`; RLS = own shifts, admins see team), `invoice_records` extended with `shift_id` (CHECK exactly one of admission_id/shift_id) — **one billed/paid workflow for every earning type**, `user_permissions.can_log_shifts` (nullable, inherit; admins yes, members no).
+- `src/lib/earnings.js` = single source of shift maths (`shiftBreakdown`, `shiftTotal`, `shiftBreakdownLines`, `effectiveAmount`), vocabularies (`SHIFT_TYPES`, `PAYER_TYPES`…), Nairobi time helpers (`toNairobiParts`, `fromNairobiParts` — end ≤ start ⇒ next day), `prefillFromLastShift` (copies last pay settings at that hospital).
+- `api.js`: `fetchPayers/createPayer/updatePayer`, `fetchShifts/createShift/updateShift/deleteShift` (soft), `fetchInvoiceRecords(teamId, 'admission'|'shift')`, `upsertInvoiceRecord(owner, …)` where owner = admissionId string or `{ shiftId }`.
+- UI: `pages/Shifts.jsx` (route `/shifts`, `PageGuard view_shifts`, sidebar "Shifts", Settings Page Access "Shift Monitor"), `components/shifts/{ShiftModal,PayersModal,PayerForm}.jsx`.
+- Shared components extracted (DRY): `components/ActionFan.jsx` (all card actions), `components/billing/BillingDetailsEditor.jsx` (`SubCard`, `useBillingDraft`, `BillingDetailsFields`, `FollowUpNote`, `SaveBar`, `fieldCls`/`modalFieldCls`), `components/FilterPopover.jsx`, `components/SummaryChip.jsx`, `components/ConfirmDialog.jsx`, `components/Switch.jsx`, `lib/exportTable.js` (`exportRowsToExcel`, `exportRowsToPdf`). Billing.jsx now uses all of them (657 → 457 lines) and passes `actingUser` to `upsertInvoiceRecord` (previously missing → no audit/log on billing saves).
+
 **Email:** DRY pair `src/lib/email.js` ↔ `supabase/functions/_shared/apptEmail.ts` (html + text — change both).
 
 **Security posture:** PROD RLS-hardened (17 tables, `anon` revoked, 24 policies). Admin actions that need service role go through Edge Functions only.
@@ -151,6 +158,7 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 ## 7. RULES (non-negotiable)
 
 - **Read this file first; update it at close-out** (§1).
+- **Cloud working copy (from 3 Oct 2026).** GitHub is connected, so Claude clones `emu11y/wardrounds`, edits, runs `npm ci && npm run build` (Linux build works in the cloud container), renders pages in a mocked Vite harness with Playwright for visual checks, and validates SQL against a throwaway local Postgres 16 before handing it over. Work goes on a `feat/*` branch and is pushed there; Emu tests on the Vercel preview, then it is merged to `dev`. Emu still runs SQL in the Supabase SQL Editor, deploys edge functions, and does phone checks.
 - **Execution model.** Chat sessions: Claude.ai = architect/diagnostic lead, Claude Code = sole file editor, Emu = relay. Cowork sessions (Claude linked to Emu's Mac): Claude edits files in the connected repo folder directly and drives browser/SQL Editor read-only SELECTs; **Emu runs** `npm run build` (sandbox can't run macOS rolldown), `git push`, `supabase` deploys, SQL **writes** (Run button) and phone taps. Commits from the sandbox can leave `.git/HEAD.lock` → Emu runs `rm -f .git/HEAD.lock`.
 - **Diagnose before building.** Read raw file contents before designing any edit. Never guess schema, data shapes or component structure. Raw output, not summaries.
 - **Strictly DRY.** Grep first. One function, one location, many consumers. Keep mirror pairs in sync.
@@ -232,7 +240,16 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 - Grey bar / lingering backdrop in standalone PWA (Settings) — needs on-device debug.
 - `SITE_URL` secret → `https://wardrounds.site`.
 
+### P1 — Shift Monitor go-live (in order)
+1. Run `WARDROUNDS_SQL_SHIFT_MONITOR.sql` on **TEST** (blocks 1→6, one execution each; block 6 should print 0,0,0,1). **Must run before the branch is deployed** — `updateUserPermissions` now writes `can_log_shifts`, so saving any member's permissions fails until the column exists.
+2. Test on the `feat/shift-monitor` Vercel preview (TEST DB): log a day, night (overnight), per-hour + overtime + per-patient % shift; Repeat; Edit; Delete; Payers add/archive/restore; Billed/Paid/invoice save; filters; Excel + PDF; member account with "Shift Monitor" toggled on sees only own shifts; Billing page unchanged (regression).
+3. Merge `feat/shift-monitor` → `dev`; run the SQL on **PROD**; promote.
+
 ### P2 — Tech debt / polish
+- Migrate the three inline confirm modals (PatientCard, Patients, Settings) onto `ConfirmDialog`, and the Settings reminder/WhatsApp switches onto `Switch`.
+- Mobile bottom tab bar is fixed (Inpatient/Outpatient/Appointments/Settings) — Billing & Shifts only via the hamburger; the onboarding wizard should pick tabs from the user's pay profile.
+- Analytics: add Shifts earnings (by month / payer / hospital) once shifts have real data.
+- Optional: per-hospital shift **rate cards** (default rates per shift type) — today "prefill from last shift" covers repeat entry.
 - Commit `supabase/schema_prod.sql`; untrack `.claude/settings.local.json`.
 - Remove `services_rendered` leftovers in `fetchAdmissionsForPatient`.
 - Billing-breakdown editor modal (edit `admission_services`); show **who added** each service (`created_by`).
@@ -258,9 +275,9 @@ Duplicate-admission guard on scanner path (`AdmitPatient.jsx` single source) · 
 
 ### New build plan (agreed 3 Oct 2026) — in this order
 
-**Phase 8 — UI minor fixes** `[ ]` — list to be captured from Emu's walkthrough (screenshots), plus P1 verify items above.
+**Phase 8 — UI minor fixes** `[~]` — ✅ ActionFan: larger 56px action circles fanned in a semicircle (branch `feat/action-fan`, also included in `feat/shift-monitor`). Remaining: list to be captured from Emu's walkthrough (screenshots), plus P1 verify items above.
 
-**Phase 9 — Shift Monitor** `[ ]` — for clinicians paid per shift (locum/sessional). Log shifts (hospital, date, start/end, shift type day/night/weekend/on-call, rate), running totals, billed/paid tracking (reuse Billing-page patterns + `invoice_records`-style status), Analytics + export. New `shifts` table (team-scoped RLS), `api.js` functions, page + permission key + Settings toggle. *Design questions open — see §10.1.*
+**Phase 9 — Shift Monitor** `[~]` BUILT on branch `feat/shift-monitor` (3 Oct) — awaiting SQL run + testing. See §6 *Earnings / Shift Monitor*. Original brief: for clinicians paid per shift (locum/sessional). Log shifts (hospital, date, start/end, shift type day/night/weekend/on-call, rate), running totals, billed/paid tracking (reuse Billing-page patterns + `invoice_records`-style status), Analytics + export. New `shifts` table (team-scoped RLS), `api.js` functions, page + permission key + Settings toggle. *Design questions open — see §10.1.*
 
 **Phase 10 — Onboarding wizard** `[ ]` — first-run flow capturing:
 1. Profession — doctor / surgeon / nurse / physiotherapist / pharmacist / clinical officer / other.
@@ -298,6 +315,11 @@ rm -f .git/HEAD.lock                                  # after sandbox commits, i
 ---
 
 ## 12. WORK LOG (newest first)
+
+### 2026-10-03 (pm) — ActionFan + Shift Monitor built (branches pushed, not merged)
+- **ActionFan** (`feat/action-fan`, 9c96271): one shared Actions control for Inpatient + Outpatient (+ Shifts) cards — 56px circles in a semicircle right of the trigger, portalled + space-aware (header/bottom nav/screen edge), closes on outside tap/scroll/Esc.
+- **Shift Monitor** (`feat/shift-monitor`): schema + earnings lib + API + Shifts page/modals/payers + permissions/route/sidebar/Settings toggle + exports, reusing `invoice_records` for billed/paid. Billing page refactored onto the newly shared components. Decisions (Emu): pay fully flexible per shift; overtime + per-patient optional per shift; user chooses who pays (payers list); a clinician can mix pay types; strictly DRY.
+- Verified: `npm run build` zero errors; Shifts + Billing rendered at 390px in a mocked harness (list, expanded card, fan, modal); earnings maths unit-checked; SQL run twice (idempotent) on local Postgres 16 with constraint + RLS tests all passing. **Not yet run on Supabase; not tested in the real app.**
 
 ### 2026-10-03 — Build resumed; Master Handoff created
 - Reviewed codebase (`dev`==`main`==`645d8c3`). Found README was the operating doc since 23 Jul, plus an unmerged 10 Aug handoff and `WHATSAPP_GOLIVE_STATE.md`.

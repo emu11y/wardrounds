@@ -55,6 +55,9 @@ const ACTION_LABELS = {
   log_visit: 'Log Visit', change_role: 'Change Role',
   update_permissions: 'Update Permissions', reset_permissions: 'Reset Permissions',
   archive_member: 'Archive Member', restore_member: 'Restore Member',
+  update_billing: 'Update Billing',
+  create_shift: 'Log Shift', update_shift: 'Edit Shift', delete_shift: 'Delete Shift',
+  create_payer: 'Add Payer', update_payer: 'Edit Payer',
 }
 
 const ACTION_BADGE_STYLES = {
@@ -71,6 +74,12 @@ const ACTION_BADGE_STYLES = {
   reset_permissions: 'bg-gray-100 text-gray-700',
   archive_member: 'bg-amber-100 text-amber-700',
   restore_member: 'bg-green-100 text-green-700',
+  update_billing: 'bg-blue-100 text-blue-700',
+  create_shift: 'bg-violet-100 text-violet-700',
+  update_shift: 'bg-violet-100 text-violet-700',
+  delete_shift: 'bg-red-100 text-red-700',
+  create_payer: 'bg-violet-100 text-violet-700',
+  update_payer: 'bg-violet-100 text-violet-700',
 }
 
 function actionLabel(action) { return ACTION_LABELS[action] || action }
@@ -474,7 +483,7 @@ export default function Settings() {
             can_edit_billing: false, can_mark_paid: false, can_view_all_patients: false,
             can_manage_outpatient: false, can_view_reports: false,
             can_access_admin: false, can_manage_team: false,
-            can_view_revenue: true,
+            can_view_revenue: true, can_log_shifts: false,
           },
         }))
         setDrawerTab('permissions')
@@ -2151,6 +2160,7 @@ export default function Settings() {
                             { key: 'can_manage_outpatient', label: 'Outpatient',       description: 'Dashboard & appointments' },
                             { key: 'can_view_all_patients', label: 'Patients',         description: 'Patient list & records' },
                             { key: 'can_edit_billing',      label: 'Billing',          description: 'Discharge billing & payment follow-up' },
+                            { key: 'can_log_shifts',        label: 'Shift Monitor',    description: 'Log shifts, pay & payment follow-up' },
                             { key: 'can_view_reports',      label: 'Analytics',        description: 'Reports & analytics' },
                             { key: 'can_access_admin',      label: 'Settings & Admin', description: 'Team settings and admin panel' },
                           ].map(({ key, label, description }) => (

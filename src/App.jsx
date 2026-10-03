@@ -25,6 +25,7 @@ const Analytics      = lazy(() => import('./pages/Analytics'))
 const Settings       = lazy(() => import('./pages/Settings'))
 const Outpatient     = lazy(() => import('./pages/Outpatient'))
 const Billing        = lazy(() => import('./pages/Billing'))
+const Shifts         = lazy(() => import('./pages/Shifts'))
 const MyAppointments = lazy(() => import('./pages/MyAppointments'))
 const AuthCallback   = lazy(() => import('./pages/AuthCallback'))
 const ResetPassword  = lazy(() => import('./pages/ResetPassword'))
@@ -104,6 +105,7 @@ function DefaultRedirect() {
   if (permissions?.view_outpatient === true) return <Navigate to="/outpatient" replace />
   if (permissions?.view_patients === true) return <Navigate to="/patients" replace />
   if (permissions?.view_billing === true) return <Navigate to="/billing" replace />
+  if (permissions?.view_shifts === true) return <Navigate to="/shifts" replace />
   if (permissions?.view_analytics === true) return <Navigate to="/analytics" replace />
   return <Navigate to="/settings" replace />
 }
@@ -163,6 +165,7 @@ function AppInner() {
         <Route path="/outpatient" element={<ProtectedLayout><PageGuard permKey="view_outpatient"><Outpatient /></PageGuard></ProtectedLayout>} />
         <Route path="/appointments" element={<ProtectedLayout><PageGuard permKey="view_appointments"><MyAppointments /></PageGuard></ProtectedLayout>} />
         <Route path="/billing" element={<ProtectedLayout><PageGuard permKey="view_billing"><Billing /></PageGuard></ProtectedLayout>} />
+        <Route path="/shifts" element={<ProtectedLayout><PageGuard permKey="view_shifts"><Shifts /></PageGuard></ProtectedLayout>} />
         <Route path="/analytics" element={<ProtectedLayout><PageGuard permKey="view_analytics"><Analytics /></PageGuard></ProtectedLayout>} />
         <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
         {/* Public + ungated on purpose: Meta requires a publicly fetchable
