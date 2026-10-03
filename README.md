@@ -1,5 +1,8 @@
 # WardRounds — README & Operating Document
 
+> ## ⚠️ SUPERSEDED (3 Oct 2026) → read **[`MASTER_HANDOFF.md`](MASTER_HANDOFF.md)** — it is now the single governing document.
+> This README is kept for history only; do not update it.
+
 > **This README is the single source of truth for the project.** There are **no separate
 > dated handoff files** — the running handoff lives here. (Old per‑session files are in
 > `docs/archive/`.)
