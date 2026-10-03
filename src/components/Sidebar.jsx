@@ -9,9 +9,10 @@ import { useAuth } from '../context/AuthContext'
 import { useSidebar } from '../context/SidebarContext'
 import { usePwaInstall } from '../context/PwaInstallContext'
 import { signOut } from '../lib/auth'
+import { routeVisible } from '../lib/onboarding'
 
 // Grouped nav: parent groups expand to reveal children; Patients is standalone.
-const navGroups = [
+const ALL_NAV_GROUPS = [
   {
     key: 'inpatient',
     permKey: 'view_inpatient',
@@ -34,7 +35,7 @@ const navGroups = [
   },
 ]
 
-const standaloneItems = [
+const ALL_STANDALONE_ITEMS = [
   { to: '/patients', icon: Users, label: 'Patients', permKey: 'view_patients' },
   { to: '/billing', icon: ReceiptText, label: 'Billing', permKey: 'view_billing' },
   { to: '/shifts', icon: Clock3, label: 'Shifts', permKey: 'view_shifts' },
@@ -44,10 +45,17 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const { mobileOpen, setMobileOpen } = useSidebar()
 
-  const { user, permissions } = useAuth()
+  const { user, permissions, modules } = useAuth()
   const { installAvailable, openInstallModal } = usePwaInstall()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Modules the user doesn't use (from their pay types in the setup wizard) are
+  // HIDDEN, not locked. No pay types recorded → everything shows (modules === null).
+  const navGroups = ALL_NAV_GROUPS
+    .map(g => ({ ...g, children: g.children.filter(c => routeVisible(modules, c.to)) }))
+    .filter(g => g.children.length > 0)
+  const standaloneItems = ALL_STANDALONE_ITEMS.filter(i => routeVisible(modules, i.to))
 
   // SHOW-LOCKED: locked items stay visible (dimmed, with a lock) and still
   // navigate — PageGuard renders the denied state on arrival.

@@ -82,8 +82,15 @@ export const PERMISSION_LABELS = {
 // true/false; null/undefined/missing keys inherit the role's defaults. Unknown roles
 // get everything denied. Always returns a fully-populated object of strict booleans —
 // never null — so callers never need to null-check individual keys.
-export function resolvePermissions(row, role) {
-  const base = ROLE_DEFAULTS[role] || ALL_FALSE
+//
+// teamSettings (optional): the user's team row (or { members_see_financials }).
+// Set in the onboarding wizard — when a practice says members should NOT see
+// financials, members inherit can_view_revenue = false unless overridden per person.
+export function resolvePermissions(row, role, teamSettings = null) {
+  let base = ROLE_DEFAULTS[role] || ALL_FALSE
+  if (role === 'member' && teamSettings?.members_see_financials === false) {
+    base = { ...base, can_view_revenue: false }
+  }
   const resolved = Object.fromEntries(ALL_KEYS.map(k => {
     if (row?.[k] === true) return [k, true]
     if (row?.[k] === false) return [k, false]
@@ -113,5 +120,5 @@ export function resolvePermissions(row, role) {
 
 export function hasPermission(user, permissionsRow, key) {
   if (!user || !ALL_KEYS.includes(key)) return false
-  return resolvePermissions(permissionsRow, user.role)[key] === true
+  return resolvePermissions(permissionsRow, user.role, user.teams)[key] === true
 }

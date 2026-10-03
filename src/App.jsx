@@ -1,10 +1,9 @@
 import { useState, useEffect, Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
-import { supabase } from './lib/supabaseClient'
 import { SidebarProvider } from './context/SidebarContext'
-import WelcomeModal from './components/onboarding/WelcomeModal'
-import TooltipTour from './components/onboarding/TooltipTour'
+import OnboardingWizard from './components/onboarding/OnboardingWizard'
+import { OPEN_SETUP_EVENT } from './lib/onboarding'
 import Sidebar from './components/Sidebar'
 import PageGuard from './components/PageGuard'
 import TabNavigation from './components/TabNavigation'
@@ -99,8 +98,13 @@ function RootRoute() {
 }
 
 function DefaultRedirect() {
-  const { permissions } = useAuth()
+  const { permissions, modules } = useAuth()
   if (!permissions) return null
+  // Users whose pay types don't include ward rounds land on their own module first.
+  if (modules && !modules.inpatient) {
+    if (modules.outpatient && permissions.view_outpatient === true) return <Navigate to="/outpatient" replace />
+    if (modules.shifts && permissions.view_shifts === true) return <Navigate to="/shifts" replace />
+  }
   if (permissions?.view_inpatient === true) return <Dashboard />
   if (permissions?.view_outpatient === true) return <Navigate to="/outpatient" replace />
   if (permissions?.view_patients === true) return <Navigate to="/patients" replace />
@@ -110,49 +114,27 @@ function DefaultRedirect() {
   return <Navigate to="/settings" replace />
 }
 
-const ONBOARDING_KEY = 'wr_onboarding_complete'
-
 function AppInner() {
-  const { user, session } = useAuth()
+  const { user, session, refreshUser } = useAuth()
   const navigate = useNavigate()
-  const [showWelcome, setShowWelcome] = useState(false)
-  const [showTour, setShowTour]       = useState(false)
+  // Setup wizard: shown automatically until the user has completed it
+  // (users.onboarded_at is NULL — brand-new signups and newly invited members),
+  // and on demand from Settings (OPEN_SETUP_EVENT) or with ?setup=1.
+  // `undefined` onboarded_at (column not migrated yet) never forces it.
+  const [setupRequested, setSetupRequested] = useState(() => new URLSearchParams(window.location.search).get('setup') === '1')
+  const needsSetup = !!user?.team_id && user?.onboarded_at === null
+  const showWizard = !!user?.team_id && (needsSetup || setupRequested)
 
   useEffect(() => {
-    if (!user || !user.team_id) return
+    const open = () => setSetupRequested(true)
+    window.addEventListener(OPEN_SETUP_EVENT, open)
+    return () => window.removeEventListener(OPEN_SETUP_EVENT, open)
+  }, [])
 
-    const forceShow = new URLSearchParams(window.location.search).get('onboarding')
-    if (forceShow === '1') {
-      localStorage.removeItem(ONBOARDING_KEY)
-      setShowWelcome(true)
-      return
-    }
-
-    if (localStorage.getItem(ONBOARDING_KEY)) return
-    supabase
-      .from('hospitals')
-      .select('id')
-      .eq('team_id', user.team_id)
-      .limit(1)
-      .then(({ data }) => {
-        if (!data || data.length === 0) setShowWelcome(true)
-      })
-  }, [user])
-
-  function handleOnboardingStart() {
-    setShowWelcome(false)
-    setShowTour(true)
-  }
-
-  function handleOnboardingComplete() {
-    setShowTour(false)
-    localStorage.setItem(ONBOARDING_KEY, 'true')
-  }
-
-  function handleOnboardingSkip() {
-    setShowWelcome(false)
-    setShowTour(false)
-    localStorage.setItem(ONBOARDING_KEY, 'true')
+  async function handleSetupDone(route) {
+    setSetupRequested(false)
+    await refreshUser()
+    navigate(route, { replace: true })
   }
 
   const routes = (
@@ -181,15 +163,13 @@ function AppInner() {
 
   const modals = (
     <>
-      {showWelcome && (
-        <WelcomeModal
-          userName={user?.full_name}
-          onStart={handleOnboardingStart}
-          onSkip={handleOnboardingSkip}
+      {showWizard && (
+        <OnboardingWizard
+          key={user.id}
+          user={user}
+          onDone={handleSetupDone}
+          onClose={needsSetup ? null : () => setSetupRequested(false)}
         />
-      )}
-      {showTour && (
-        <TooltipTour onComplete={handleOnboardingComplete} />
       )}
       {/* Install confirm/steps modal — app-wide (opened from the banner or the
           Sidebar "Install App" row). Self-hides when not installable. */}

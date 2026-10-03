@@ -149,6 +149,12 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 - UI: `pages/Shifts.jsx` (route `/shifts`, `PageGuard view_shifts`, sidebar "Shifts", Settings Page Access "Shift Monitor"), `components/shifts/{ShiftModal,PayersModal,PayerForm}.jsx`.
 - Shared components extracted (DRY): `components/ActionFan.jsx` (all card actions), `components/billing/BillingDetailsEditor.jsx` (`SubCard`, `useBillingDraft`, `BillingDetailsFields`, `FollowUpNote`, `SaveBar`, `fieldCls`/`modalFieldCls`), `components/FilterPopover.jsx`, `components/SummaryChip.jsx`, `components/ConfirmDialog.jsx`, `components/Switch.jsx`, `lib/exportTable.js` (`exportRowsToExcel`, `exportRowsToPdf`). Billing.jsx now uses all of them (657 → 457 lines) and passes `actingUser` to `upsertInvoiceRecord` (previously missing → no audit/log on billing saves).
 
+**Onboarding wizard (3 Oct 2026, branch `feat/onboarding-wizard`):**
+- Schema `WARDROUNDS_SQL_ONBOARDING.sql` (applied to **TEST** 3 Oct; PROD pending): `professions` lookup (9 seeded), `users.profession_key` (FK) + `users.onboarded_at` (NULL = wizard pending; **all pre-existing users backfilled** so only new signups/invitees see it), `teams.practice_type` (solo|team), `teams.expected_team_size`, `teams.members_see_financials` (team default for members' `can_view_revenue`), `user_pay_models` (ward_rounds | per_patient | per_procedure | per_shift + per-patient/shift defaults; RLS own-or-admin, delete allowed).
+- `src/lib/onboarding.js`: vocabularies, `modulesFor(payModels)` (null when none recorded → show everything), `routeVisible`, `homeRouteFor`, draft helpers, **`applyOnboarding()`** — ordered, idempotent writes (practice profile incl. invoice `doctor_name/doctor_title` — previously defaulted to "Dr. Ebrahim Yusuf" for every new team; hospitals; wards + daily rates; Consultation service; procedures; hospital payers; pay models; `completeOnboarding`). Created ids are written back to the local draft (`localStorage wr_onboarding_draft_<userId>`) so retries never duplicate.
+- UI `components/onboarding/OnboardingWizard.jsx` + `wizardParts.jsx`: admin flow You → Profession → Practice (solo/team, team size, financial visibility) → Pay types (+ per-patient fixed/%, shift rate) → Hospitals (colour, tag prefix) → Rates (wards per hospital, procedures) → Review → Done (CTA to the user's main module; "Add my team members" for teams). Members: You → Profession → Pay → Review.
+- Wiring: `App.jsx` shows the wizard when `user.onboarded_at === null` (replaces WelcomeModal + TooltipTour, deleted), on `OPEN_SETUP_EVENT` (Settings → **Run setup again**, closable) or `?setup=1`. `AuthContext` exposes `payModels` + `modules`; `resolvePermissions(row, role, teamSettings)` applies `members_see_financials`; Sidebar/TabNavigation **hide** modules the user doesn't use (Shifts tab appears for per-shift clinicians); `DefaultRedirect` sends non-ward-round users to their module; Shift form pre-fills the setup shift rate. Shared `components/Segmented.jsx` (Shift form + wizard).
+
 **Email:** DRY pair `src/lib/email.js` ↔ `supabase/functions/_shared/apptEmail.ts` (html + text — change both).
 
 **Security posture:** PROD RLS-hardened (17 tables, `anon` revoked, 24 policies). Admin actions that need service role go through Edge Functions only.
@@ -245,7 +251,12 @@ TEST login: `test@wardrounds.com` (seed SQL must key off this, not the hotmail a
 2. Test on the `feat/shift-monitor` Vercel preview (TEST DB): log a day, night (overnight), per-hour + overtime + per-patient % shift; Repeat; Edit; Delete; Payers add/archive/restore; Billed/Paid/invoice save; filters; Excel + PDF; member account with "Shift Monitor" toggled on sees only own shifts; Billing page unchanged (regression).
 3. Merge `feat/shift-monitor` → `dev`; run the SQL on **PROD**; promote.
 
+### P1 — Onboarding wizard go-live (in order)
+1. Emu tests locally (TEST DB): `git fetch && git checkout feat/onboarding-wizard && npm install && npm run dev` → Settings → **Run setup again** (re-run mode), and a brand-new signup on TEST for the true first-run path; also an invited member (member flow).
+2. Fixes from testing → then run `WARDROUNDS_SQL_ONBOARDING.sql` on **PROD** (blocks 1–4, verify block 5) **before** promoting, then merge to `dev` → `main`.
+
 ### P2 — Tech debt / polish
+- Wizard follow-ups: a member who picks *Per shift* still needs an admin to switch on Shift Monitor (`can_log_shifts`) — consider auto-granting; step count changes as pay types are chosen (by design); re-run can add but not remove hospitals/wards (use Settings).
 - Migrate the three inline confirm modals (PatientCard, Patients, Settings) onto `ConfirmDialog`, and the Settings reminder/WhatsApp switches onto `Switch`.
 - Mobile bottom tab bar is fixed (Inpatient/Outpatient/Appointments/Settings) — Billing & Shifts only via the hamburger; the onboarding wizard should pick tabs from the user's pay profile.
 - Analytics: add Shifts earnings (by month / payer / hospital) once shifts have real data.
@@ -279,7 +290,7 @@ Duplicate-admission guard on scanner path (`AdmitPatient.jsx` single source) · 
 
 **Phase 9 — Shift Monitor** `[~]` LIVE on PROD (3 Oct, main @ 6df644c) — awaiting real-use testing. See §6 *Earnings / Shift Monitor*. Original brief: for clinicians paid per shift (locum/sessional). Log shifts (hospital, date, start/end, shift type day/night/weekend/on-call, rate), running totals, billed/paid tracking (reuse Billing-page patterns + `invoice_records`-style status), Analytics + export. New `shifts` table (team-scoped RLS), `api.js` functions, page + permission key + Settings toggle. *Design questions open — see §10.1.*
 
-**Phase 10 — Onboarding wizard** `[ ]` — first-run flow capturing:
+**Phase 10 — Onboarding wizard** `[~]` BUILT on branch `feat/onboarding-wizard` (3 Oct) — TEST migrated; awaiting Emu's local test. **Do NOT promote until tested locally.** Original brief: first-run flow capturing:
 1. Profession — doctor / surgeon / nurse / physiotherapist / pharmacist / clinical officer / other.
 2. Practice type — solo / team (changeable later).
 3. If team: can the team see **financials** or only **patient details & services** (maps onto `can_view_revenue` defaults).
@@ -315,6 +326,10 @@ rm -f .git/HEAD.lock                                  # after sandbox commits, i
 ---
 
 ## 12. WORK LOG (newest first)
+
+### 2026-10-03 (night) — Onboarding wizard built (branch only, not promoted)
+- Built per Emu's brief: profession, solo/team (+size, financial visibility), pay types (per shift / per patient fixed or % / per procedure / ward rounds daily), hospitals, rates → app ready to use at the end. Emu's instruction: **no production push until tested locally**.
+- Verified: migration + constraint/RLS tests on local Postgres (idempotent; backfill; member own-only; admin manages team); full click-through in a mocked harness at 390px and 1280px (admin + member) with the exact write sequence checked; `npm run build` clean. TEST migration applied via Chrome (first editor tab hung on "Running…"; verified from a second tab: professions 9, un-onboarded users 0 of 5, column present, 4 policies).
 
 ### 2026-10-03 (evening) — PROMOTED TO PRODUCTION
 - Shift Monitor SQL applied by Claude via Chrome (Emu signed in, authorised): **PROD** blocks 1–6 run separately → verify payers 0 · shifts 0 · shift billing rows 0 · owner check 1 · `can_log_shifts` 1. **TEST** run as one transaction; first attempt failed because **TEST lacked `current_user_role()`** (PROD has it) → added PROD's exact definition to TEST, re-ran, verified (all as PROD + helper 1). TEST now matches PROD for this helper.

@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { getCurrentUser } from '../lib/auth'
 import { resolvePermissions } from '../lib/permissions'
+import { fetchPayModels } from '../lib/api'
+import { modulesFor } from '../lib/onboarding'
 
 const AuthContext = createContext(null)
 
@@ -11,6 +13,7 @@ export function AuthProvider({ children }) {
   const [permissions, setPermissions] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authMessage, setAuthMessage] = useState(null)
+  const [payModels, setPayModels] = useState([])
 
   useEffect(() => {
     // Force re-login on every page refresh by wiping Supabase session from localStorage.
@@ -63,7 +66,10 @@ export function AuthProvider({ children }) {
         .select('*')
         .eq('user_id', profile.id)
         .maybeSingle()
-      setPermissions(resolvePermissions(permsData, profile.role))
+      setPermissions(resolvePermissions(permsData, profile.role, profile.teams))
+      // How this clinician gets paid (onboarding wizard) → which modules they see.
+      // Tolerates the table not existing yet (returns []) so the app never blocks on it.
+      setPayModels(await fetchPayModels(profile.id).catch(() => []))
     } catch {
       setUser(null)
       setPermissions(null)
@@ -73,7 +79,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, user, permissions, loading, authMessage, clearAuthMessage: () => setAuthMessage(null), refreshUser: loadProfile }}>
+    <AuthContext.Provider value={{ session, user, permissions, payModels, modules: modulesFor(payModels), loading, authMessage, clearAuthMessage: () => setAuthMessage(null), refreshUser: loadProfile }}>
       {children}
     </AuthContext.Provider>
   )

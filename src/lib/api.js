@@ -1295,6 +1295,54 @@ export async function deleteShift(shiftId, actingUser) {
   await logActivity({ user: actingUser, action: 'delete_shift', entityType: 'shift', entityId: shiftId })
 }
 
+// ─── ONBOARDING (wizard) ──────────────────────────────────────────────────────
+
+export async function fetchProfessions() {
+  const { data, error } = await supabase.from('professions').select('key, label, sort_order').eq('is_active', true).order('sort_order')
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchPayModels(userId) {
+  const { data, error } = await supabase.from('user_pay_models').select('*').eq('user_id', userId)
+  if (error) throw error
+  return data || []
+}
+
+const PAY_MODEL_FIELDS = ['per_patient_mode', 'per_patient_amount', 'per_patient_percent', 'shift_rate', 'shift_rate_unit']
+
+// Make the user's pay models exactly `models` ([{ pay_model, ...defaults }]).
+// Check-then-update/insert (no upsert — RLS INSERT checks fire on upsert), and rows
+// for unticked models are deleted (they are settings, not clinical history).
+export async function savePayModels(userId, teamId, models, actingUser) {
+  const existing = await fetchPayModels(userId)
+  const keep = new Set(models.map(m => m.pay_model))
+  const toDelete = existing.filter(e => !keep.has(e.pay_model)).map(e => e.id)
+  if (toDelete.length) {
+    const { error } = await supabase.from('user_pay_models').delete().in('id', toDelete)
+    if (error) throw error
+  }
+  const now = new Date().toISOString()
+  for (const m of models) {
+    const fields = Object.fromEntries(PAY_MODEL_FIELDS.map(k => [k, m[k] === '' || m[k] === undefined ? null : m[k]]))
+    const row = existing.find(e => e.pay_model === m.pay_model)
+    const { error } = row
+      ? await supabase.from('user_pay_models').update({ ...fields, updated_at: now }).eq('id', row.id)
+      : await supabase.from('user_pay_models').insert({ id: crypto.randomUUID(), team_id: teamId, user_id: userId, pay_model: m.pay_model, ...fields })
+    if (error) throw error
+  }
+  await logActivity({ user: actingUser, action: 'update_pay_models', entityType: 'user', entityId: userId, details: { pay_models: [...keep] } })
+}
+
+// Final wizard write for the user row: profile fields + onboarded_at.
+export async function completeOnboarding(userId, { full_name, profession_key, speciality, phone }) {
+  const { error } = await supabase.from('users').update({
+    full_name, profession_key: profession_key || null, speciality: speciality || null, phone: phone || null,
+    onboarded_at: new Date().toISOString(),
+  }).eq('id', userId)
+  if (error) throw error
+}
+
 // ─── OUTPATIENT VISITS ────────────────────────────────────────────────────────
 
 export async function fetchOutpatientVisits(teamId) {

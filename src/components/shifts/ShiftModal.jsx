@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { X, Moon, Plus } from 'lucide-react'
 import ModalShell from '../ModalShell'
 import Switch from '../Switch'
+import Segmented from '../Segmented'
 import PayerForm from './PayerForm'
 import { modalFieldCls as fieldCls, labelCls } from '../billing/BillingDetailsEditor'
 import { createShift, updateShift, createPayer } from '../../lib/api'
@@ -15,17 +16,6 @@ import { formatKES, todayStr } from '../../lib/utils'
 // per hour) plus optional overtime and optional per-patient pay — the live total
 // at the bottom comes from lib/earnings.js, the same maths the cards and exports use.
 
-const Segmented = ({ options, value, onChange }) => (
-  <div className="flex bg-black/[0.05] rounded-full p-1 gap-1">
-    {options.map(o => (
-      <button key={o.key} type="button" onClick={() => onChange(o.key)}
-        className={`flex-1 px-3 py-1.5 rounded-full text-xs font-semibold transition ${value === o.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-        {o.label}
-      </button>
-    ))}
-  </div>
-)
-
 const NumberField = ({ label, value, onChange, step = 'any', suffix }) => (
   <label className="block">
     <span className={labelCls}>{label}</span>
@@ -38,7 +28,8 @@ const NumberField = ({ label, value, onChange, step = 'any', suffix }) => (
 )
 
 // shift = edit that shift · template = "Repeat": copy a shift's settings onto today.
-function initialForm(shift, shifts, template) {
+// defaults = the clinician's per_shift pay model from onboarding (used until they've logged a shift).
+function initialForm(shift, shifts, template, defaults) {
   const src = shift || template
   if (src) {
     const s = toNairobiParts(src.starts_at), e = toNairobiParts(src.ends_at)
@@ -47,18 +38,21 @@ function initialForm(shift, shifts, template) {
     return base
   }
   const pre = prefillFromLastShift(shifts, null)
+  const fromSetup = !shifts.length && defaults
+    ? { rate_unit: defaults.shift_rate_unit || 'shift', base_rate: defaults.shift_rate ?? '' }
+    : {}
   return {
     hospital_id: shifts[0]?.hospital_id || '',
     shift_type: 'day', rate_unit: 'shift', base_rate: '',
     overtime_enabled: false, overtime_hours: '', overtime_rate: '',
     per_patient_enabled: false, per_patient_mode: 'fixed', per_patient_amount: '', per_patient_percent: '', patient_count: '',
     notes: '', _date: todayStr(), _startTime: '08:00', _endTime: '17:00',
-    ...pre, payer_id: pre.payer_id || '',
+    ...fromSetup, ...pre, payer_id: pre.payer_id || '',
   }
 }
 
-export default function ShiftModal({ shift = null, template = null, shifts = [], hospitals = [], payers = [], actingUser, onClose, onSaved, onPayerCreated }) {
-  const [form, setForm] = useState(() => initialForm(shift, shifts, template))
+export default function ShiftModal({ shift = null, template = null, defaults = null, shifts = [], hospitals = [], payers = [], actingUser, onClose, onSaved, onPayerCreated }) {
+  const [form, setForm] = useState(() => initialForm(shift, shifts, template, defaults))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [addingPayer, setAddingPayer] = useState(false)

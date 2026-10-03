@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { BedDouble, Stethoscope, CalendarClock, Settings } from 'lucide-react'
+import { BedDouble, Stethoscope, CalendarClock, Settings, Clock3 } from 'lucide-react'
+import { routeVisible } from '../lib/onboarding'
 import { useAuth } from '../context/AuthContext'
 import { usePwaInstall } from '../context/PwaInstallContext'
 
@@ -10,7 +11,7 @@ export default function TabNavigation() {
 
   const [isScrollingDown, setIsScrollingDown] = useState(false)
   const lastScrollY = useRef(0)
-  const { user } = useAuth()
+  const { user, modules, permissions } = useAuth()
   const { isStandalone } = usePwaInstall()
   const avatar_url = user?.avatar_url
   const nameParts = user?.full_name?.trim().split(/\s+/) || []
@@ -39,13 +40,19 @@ export default function TabNavigation() {
   const outpatientActive = pathname.startsWith('/outpatient')
   const appointmentsActive = pathname.startsWith('/appointments')
   const settingsActive = pathname.startsWith('/settings')
+  const shiftsActive = pathname.startsWith('/shifts')
 
+  // Tabs follow the user's modules (pay types from setup). Shifts gets a tab only
+  // for clinicians paid per shift; with no pay types recorded the classic four show.
   const navItems = [
-    { label: 'Inpatient',  Icon: BedDouble,    active: inpatientActive,    onClick: () => navigate('/') },
-    { label: 'Outpatient', Icon: Stethoscope,   active: outpatientActive,   onClick: () => navigate('/outpatient') },
-    { label: 'Appointments',   Icon: CalendarClock, active: appointmentsActive, onClick: () => navigate('/appointments') },
-    { label: 'Settings',   Icon: Settings,      active: settingsActive,     onClick: () => navigate('/settings') },
+    { to: '/',             label: 'Inpatient',    Icon: BedDouble,     active: inpatientActive },
+    { to: '/outpatient',   label: 'Outpatient',   Icon: Stethoscope,   active: outpatientActive },
+    { to: '/appointments', label: 'Appointments', Icon: CalendarClock, active: appointmentsActive },
+    ...(modules?.shifts && permissions?.view_shifts === true ? [{ to: '/shifts', label: 'Shifts', Icon: Clock3, active: shiftsActive }] : []),
+    { to: '/settings',     label: 'Settings',     Icon: Settings,      active: settingsActive },
   ]
+    .filter(i => routeVisible(modules, i.to))
+    .map(i => ({ ...i, onClick: () => navigate(i.to) }))
 
   return (
     <div

@@ -149,7 +149,7 @@ function ShiftCard({ shift, isMine, canMarkPaid, showClinician, actingUser, expa
 }
 
 export default function Shifts() {
-  const { user, permissions } = useAuth()
+  const { user, permissions, payModels } = useAuth()
   const isAdmin = user?.role === 'admin'
 
   const [shifts, setShifts] = useState([])
@@ -427,6 +427,7 @@ export default function Shifts() {
         <ShiftModal
           shift={modal.shift || null}
           template={modal.template || null}
+          defaults={payModels.find(m => m.pay_model === 'per_shift') || null}
           shifts={myShifts}
           hospitals={hospitals}
           payers={activePayers}

@@ -20,6 +20,7 @@ import Backdrop from '../components/Backdrop'
 import ModalShell from '../components/ModalShell'
 import AddPositionInline from '../components/AddPositionInline'
 import Toast from '../components/Toast'
+import { OPEN_SETUP_EVENT } from '../lib/onboarding'
 
 
 function EyeOpen() {
@@ -58,6 +59,7 @@ const ACTION_LABELS = {
   update_billing: 'Update Billing',
   create_shift: 'Log Shift', update_shift: 'Edit Shift', delete_shift: 'Delete Shift',
   create_payer: 'Add Payer', update_payer: 'Edit Payer',
+  update_pay_models: 'Update Pay Types',
 }
 
 const ACTION_BADGE_STYLES = {
@@ -80,6 +82,7 @@ const ACTION_BADGE_STYLES = {
   delete_shift: 'bg-red-100 text-red-700',
   create_payer: 'bg-violet-100 text-violet-700',
   update_payer: 'bg-violet-100 text-violet-700',
+  update_pay_models: 'bg-violet-100 text-violet-700',
 }
 
 function actionLabel(action) { return ACTION_LABELS[action] || action }
@@ -245,7 +248,7 @@ export default function Settings() {
   // ── Admin Settings: access guard ──────────────────────────────────────────
   const [myPermissionsRow, setMyPermissionsRow] = useState(null)
   const [myPermsLoaded, setMyPermsLoaded] = useState(false)
-  const myPermissions = resolvePermissions(myPermissionsRow, user?.role)
+  const myPermissions = resolvePermissions(myPermissionsRow, user?.role, user?.teams)
   const canAccessAdmin = myPermsLoaded && myPermissions.can_access_admin
 
   useEffect(() => {
@@ -325,7 +328,7 @@ export default function Settings() {
         try {
           await resetUserPermissions(drawerMember.id, user)
           await reloadTeamMembers()
-          setPermToggles(resolvePermissions(null, drawerMember.role))
+          setPermToggles(resolvePermissions(null, drawerMember.role, user?.teams))
           showToast('Permissions reset to role defaults')
         } catch (err) {
           setErrorModal({ title: 'Reset Failed', message: 'Failed to reset permissions: ' + err.message })
@@ -393,7 +396,7 @@ export default function Settings() {
   function openDrawer(member) {
     setDrawerMemberId(member.id)
     setDrawerTab('profile')
-    const resolvedPerms = resolvePermissions(memberOverrideRow(member), member.role)
+    const resolvedPerms = resolvePermissions(memberOverrideRow(member), member.role, user?.teams)
     setDrawerForm({
       full_name: member.full_name || '',
       position_id: member.position_id ?? null,
@@ -483,7 +486,7 @@ export default function Settings() {
             can_edit_billing: false, can_mark_paid: false, can_view_all_patients: false,
             can_manage_outpatient: false, can_view_reports: false,
             can_access_admin: false, can_manage_team: false,
-            can_view_revenue: true, can_log_shifts: false,
+            can_view_revenue: null, can_log_shifts: false, // null = follow the practice's "members see financials" setting
           },
         }))
         setDrawerTab('permissions')
@@ -949,6 +952,18 @@ export default function Settings() {
 
       {activeTab === 'billing' && (
         <>
+      {/* ── Setup wizard (re-run) ───────────────────────────────────────────── */}
+      <div className="bg-white p-4 md:p-6 rounded-xl shadow flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+        <div>
+          <h2 className="text-base font-bold">Setup &amp; pay types</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Change how you get paid, solo or team, and add hospitals, wards, fees or procedures — step by step.</p>
+        </div>
+        <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_SETUP_EVENT))}
+          className="flex-shrink-0 px-5 py-2 rounded-full bg-ios-blue text-white text-sm font-semibold shadow-sm">
+          Run setup again
+        </button>
+      </div>
+
       {/* ── Practice Details ─────────────────────────────────────────────────── */}
       <div id="settings-practice-form" className="bg-white p-4 md:p-6 rounded-xl shadow">
         <h2 className="text-xl font-bold mb-1">Practice Details</h2>
@@ -2233,7 +2248,7 @@ export default function Settings() {
                                 const members = await reloadTeamMembers()
                                 const refreshed = members.find(m => m.id === drawerMember.id)
                                 const role = refreshed?.role || drawerMember.role
-                                const resetPerms = resolvePermissions(null, role)
+                                const resetPerms = resolvePermissions(null, role, user?.teams)
                                 setDrawerForm(prev => ({ ...prev, permissions: resetPerms, role }))
                                 setPermToggles(resetPerms)
                                 showToast('Permissions reset to role defaults')
