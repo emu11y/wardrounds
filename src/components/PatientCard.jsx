@@ -3,7 +3,9 @@ import {
   FileText, Trash2,
   ChevronDown, ChevronUp,
   Clock, Building2, CalendarDays, Pencil,
+  ArrowRight, SquarePen, Plus, LogOut,
 } from 'lucide-react'
+import ActionFan from './ActionFan'
 import { useAuth } from '../context/AuthContext'
 import RevenueValue from './RevenueValue'
 import { dischargePatient, deleteAdmission, fetchAdmissionServices, deleteAdmissionService } from '../lib/api'
@@ -519,18 +521,23 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
             {/* 5. ACTIONS + COLLAPSE */}
             <div className="flex items-center pt-1 pb-1 gap-2">
               {isActive && (
-                <button
-                  onClick={e => { e.stopPropagation(); setActionsOpen(prev => !prev) }}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
-                >
-                  <span className="tracking-widest text-gray-400">•••</span>
-                  <span>Actions</span>
-                  <span className={`text-[9px] transition-transform duration-300 inline-block ${actionsOpen ? 'rotate-180' : ''}`}>▾</span>
-                </button>
+                <ActionFan
+                  open={actionsOpen}
+                  onOpenChange={setActionsOpen}
+                  disabled={isProcessing}
+                  actions={[
+                    ...(permissions?.can_transfer === true ? [{ key: 'transfer', title: 'Transfer ward', icon: ArrowRight, tone: 'blue', onClick: () => onTransfer?.(admission) }] : []),
+                    ...(permissions?.can_view_revenue === true ? [{ key: 'invoice', title: 'View invoice', icon: FileText, tone: 'blue', onClick: () => onInvoice?.(admission) }] : []),
+                    { key: 'note', title: 'Add note', icon: SquarePen, tone: 'gray', onClick: () => onAddNotes?.(admission) },
+                    ...(permissions?.can_edit_billing === true ? [{ key: 'service', title: 'Add service', icon: Plus, tone: 'gray', onClick: () => onAddServices?.(admission, loadServices) }] : []),
+                    ...(permissions?.can_discharge === true ? [{ key: 'discharge', title: 'Discharge patient', icon: LogOut, tone: 'green', onClick: handleDischarge }] : []),
+                    { key: 'delete', title: 'Delete record', icon: Trash2, tone: 'red', onClick: handleDeletePatient },
+                  ]}
+                />
               )}
               <button
                 onClick={e => { e.stopPropagation(); onToggleExpand?.(admission.id) }}
-                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
+                className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-gray-600 bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/60 transition-all duration-200"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                   <polyline points="18 15 12 9 6 15"/>
@@ -538,75 +545,8 @@ export default function PatientCard({ admission, isExpanded, isNew, onToggleExpa
                 Collapse
               </button>
             </div>
-
-            {/* No overflow-hidden — lets hover:scale-110 breathe. pointer-events-none when closed. */}
-            {isActive && (
-              <div className={`transition-all duration-300 ease-out ${actionsOpen ? 'max-h-24 opacity-100 mt-3 pointer-events-auto' : 'max-h-0 opacity-0 mt-0 pointer-events-none'}`}>
-                <div className="overflow-visible pb-2">
-                  <div className="flex items-center gap-2 sm:gap-2.5 flex-nowrap overflow-x-auto scrollbar-none pb-1">
-                    {[
-                      ...(permissions?.can_transfer === true ? [{
-                        onClick: () => onTransfer?.(admission),
-                        title: 'Transfer ward',
-                        colorClass: 'bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-100',
-                        disabled: isProcessing,
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>,
-                      }] : []),
-                      ...(permissions?.can_view_revenue === true ? [{
-                        onClick: () => onInvoice?.(admission),
-                        title: 'View invoice',
-                        colorClass: 'bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-100',
-                        disabled: isProcessing,
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
-                      }] : []),
-                      {
-                        onClick: () => onAddNotes?.(admission),
-                        title: 'Add note',
-                        colorClass: 'bg-gray-100 hover:bg-gray-200 text-gray-600 border-gray-200',
-                        disabled: isProcessing,
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
-                      },
-                      ...(permissions?.can_edit_billing === true ? [{
-                        onClick: () => onAddServices?.(admission, loadServices),
-                        title: 'Add service',
-                        colorClass: 'bg-gray-100 hover:bg-gray-200 text-gray-600 border-gray-200',
-                        disabled: isProcessing,
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>,
-                      }] : []),
-                      ...(permissions?.can_discharge === true ? [{
-                        onClick: handleDischarge,
-                        title: 'Discharge patient',
-                        colorClass: 'bg-green-50 hover:bg-green-100 text-green-600 border-green-100',
-                        disabled: isProcessing,
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
-                      }] : []),
-                      {
-                        onClick: handleDeletePatient,
-                        title: 'Delete record',
-                        colorClass: 'bg-red-50 hover:bg-red-100 text-red-500 border-red-100',
-                        disabled: isProcessing,
-                        icon: <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
-                      },
-                    ].map((btn, i) => (
-                      <button
-                        key={i}
-                        onClick={e => { e.stopPropagation(); btn.onClick() }}
-                        title={btn.title}
-                        disabled={btn.disabled}
-                        style={{ transitionDelay: actionsOpen ? `${i * 35}ms` : '0ms' }}
-                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex-shrink-0 flex items-center justify-center border transition-all duration-[250ms] ease-out hover:scale-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
-                          ${actionsOpen ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-3 scale-75 opacity-0'}
-                          ${btn.colorClass}`}
-                      >
-                        {btn.icon}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {actionError && (
-                  <p className="text-xs text-red-500 mt-2">{actionError}</p>
-                )}
-              </div>
+            {actionError && (
+              <p className="text-xs text-red-500 mt-2">{actionError}</p>
             )}
 
           </div>
